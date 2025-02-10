@@ -10,33 +10,37 @@ from transformers import pipeline
 def normalize_word(word):
     return re.sub(r'[^a-zA-Z가-힣]', '', word).lower()
 
-# 뉴스 크롤링 함수
-def crawl_naver_news(company_name, start_date, end_date):
+# 뉴스 크롤링 함수 (페이지 추가)
+def crawl_naver_news(company_name, start_date, end_date, max_pages=5):
     try:
         encoded_query = urllib.parse.quote(company_name)
         date_filter = f"nso=so:r,p:from{start_date}to{end_date}"
         base_url = f"https://search.naver.com/search.naver?where=news&sm=tab_jum&query={encoded_query}&{date_filter}"
+
+        titles, contents = [], []
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
 
-        response = requests.get(base_url, headers=headers)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.content, 'html.parser')
+        # 페이지를 순차적으로 가져오기
+        for page in range(1, max_pages + 1):
+            url = f"{base_url}&start={1 + (page - 1) * 10}"  # start=1 부터 10개씩
+            response = requests.get(url, headers=headers)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.content, 'html.parser')
 
-        titles, contents = [], []
-        news_items = soup.select("ul.list_news > li")
+            news_items = soup.select("ul.list_news > li")
+            
+            for item in news_items:
+                title_elem = item.select_one("a.news_tit")
+                title = title_elem.text.strip() if title_elem else "제목 없음"
+                content_elem = item.select_one("div.news_dsc")
+                content = content_elem.text.strip() if content_elem else ""
 
-        for item in news_items:
-            title_elem = item.select_one("a.news_tit")
-            title = title_elem.text.strip() if title_elem else "제목 없음"
-            content_elem = item.select_one("div.news_dsc")
-            content = content_elem.text.strip() if content_elem else ""
-
-            # 필터링 조건: 기업명 포함
-            if company_name in title or company_name in content:
-                titles.append(title)
-                contents.append(content)
+                # 필터링 조건: 기업명 포함
+                if company_name in title or company_name in content:
+                    titles.append(title)
+                    contents.append(content)
 
         return titles, contents
     except Exception as e:
@@ -84,8 +88,8 @@ if st.button("뉴스 요약"):
             start_date_str = start_date.strftime('%Y%m%d')
             end_date_str = today.strftime('%Y%m%d')
 
-            # 뉴스 크롤링 실행
-            result = crawl_naver_news(search_query, start_date_str, end_date_str)
+            # 뉴스 크롤링 실행 (최대 5페이지 가져오기)
+            result = crawl_naver_news(search_query, start_date_str, end_date_str, max_pages=5)
 
             if result:
                 titles, contents = result
@@ -100,6 +104,7 @@ if st.button("뉴스 요약"):
                 st.warning("관련 뉴스를 찾을 수 없습니다.")
         except Exception as e:
             st.error(f"오류가 발생했습니다: {e}")
+
 
 
 
