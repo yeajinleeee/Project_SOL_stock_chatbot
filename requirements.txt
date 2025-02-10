@@ -12,3 +12,5 @@ openai
 mplfinance
 plotly
 loguru
+datasets
+faiss-cpu
