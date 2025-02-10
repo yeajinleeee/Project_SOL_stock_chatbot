@@ -1,3 +1,4 @@
+streamlit
 sentence-transformers
 langchain
 chromadb
@@ -5,9 +6,9 @@ openai
 huggingface-hub
 torch
 transformers
-streamlit
 finance-datareader
 mplfinance
 pandas
 numpy
+
 
