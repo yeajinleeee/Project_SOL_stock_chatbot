@@ -6,7 +6,7 @@ import random
 import urllib.parse
 import re
 from datetime import datetime, timedelta
-from transformers import pipeline
+from transformers import RagTokenizer, RagRetriever, RagSequenceForGeneration
 
 # 유사 단어 필터링을 위한 정규화 함수
 def 정규화_단어(단어):
@@ -85,6 +85,11 @@ def 네이버_뉴스_크롤링(기업명, 시작날짜, 종료날짜, 페이지_
     except Exception as e:
         return None
 
+# RAG 모델 로드
+tokenizer = RagTokenizer.from_pretrained("facebook/rag-token-nq")
+retriever = RagRetriever.from_pretrained("facebook/rag-token-nq")
+model = RagSequenceForGeneration.from_pretrained("facebook/rag-token-nq")
+
 # 기업명과 날짜 범위 입력 받기
 st.title("기업 뉴스 요약")
 
@@ -104,12 +109,13 @@ if search_query:
         titles, channels, links, contents = result
         st.write(f"**{search_query}** 관련 뉴스 ({start_date_str}부터 {end_date_str}까지)")
 
-        # 뉴스 기사 요약 및 링크만 출력
-        summarizer = pipeline("summarization")
-
         for title, channel, link, content in zip(titles, channels, links, contents):
-            # 기사 내용 요약
-            summary = summarizer(content[:1024], max_length=150, min_length=50, do_sample=False)[0]['summary_text']
+            # 검색된 뉴스 기사로부터 RAG를 사용하여 요약 생성
+            inputs = tokenizer(content, return_tensors="pt", max_length=1024, truncation=True)
+            retrieved_docs = retriever.retrieve(input_ids=inputs["input_ids"])
+            generated = model.generate(input_ids=inputs["input_ids"], context_input_ids=retrieved_docs["context_input_ids"])
+
+            summary = tokenizer.decode(generated[0], skip_special_tokens=True)
 
             st.subheader(f"제목: {title}")
             st.write(f"**언론사**: {channel}")
@@ -118,6 +124,7 @@ if search_query:
             st.write("---")
     else:
         st.write("🔍 해당 기업에 관련된 뉴스가 없습니다.")
+
 
 
 
