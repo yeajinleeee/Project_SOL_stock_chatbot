@@ -6,6 +6,14 @@ import random
 import urllib.parse
 import re
 from datetime import datetime, timedelta
+from transformers import pipeline
+
+# Hugging Face 요약 모델 로드
+@st.cache_resource
+def load_summarizer():
+    return pipeline("summarization", model="facebook/bart-large-cnn")
+
+summarizer = load_summarizer()
 
 # 유사 단어 필터링을 위한 정규화 함수
 def normalize_word(word):
@@ -49,17 +57,26 @@ def crawl_naver_news(company_name, start_date, end_date):
         st.error(f"크롤링 오류 발생: {e}")
         return None
 
+# 뉴스 요약 함수
+def summarize_news(content):
+    try:
+        summary = summarizer(content, max_length=50, min_length=20, do_sample=False)
+        return summary[0]['summary_text']
+    except Exception as e:
+        st.warning(f"요약 실패: {e}")
+        return content[:100] + "..."  # 요약 실패 시 원본 일부 반환
+
 # Streamlit 앱 구성
-st.title("📈 뉴스 기반 주식 정보")
-st.subheader("기업명을 입력하여 관련 뉴스를 확인하세요.")
+st.title("📈 뉴스 기반 주식 정보 요약")
+st.subheader("기업명을 입력하여 관련 뉴스의 요약 정보를 확인하세요.")
 
 # 사용자 입력
 search_query = st.text_input("검색할 기업명을 입력하세요:", value="삼성전자")
 search_days = st.slider("검색 기간 (일 단위)", 1, 30, 7)
 
 # 검색 버튼
-if st.button("뉴스 검색"):
-    with st.spinner("뉴스를 수집 중입니다..."):
+if st.button("요약된 뉴스 검색"):
+    with st.spinner("뉴스를 수집하고 요약 중입니다..."):
         try:
             # 날짜 계산
             today = datetime.today()
@@ -74,15 +91,17 @@ if st.button("뉴스 검색"):
                 titles, channels, links, contents = result
                 st.success(f"{len(titles)}개의 뉴스를 가져왔습니다.")
 
-                # 뉴스 카드 출력
+                # 요약 결과 출력
                 for title, channel, link, content in zip(titles, channels, links, contents):
+                    summary = summarize_news(content)
                     st.markdown(f"### [{title}]({link})")
                     st.write(f"**언론사**: {channel}")
-                    st.write(f"**요약**: {content[:100]}...")
+                    st.write(f"**요약**: {summary}")
                     st.markdown("---")
             else:
                 st.warning("관련 뉴스를 찾을 수 없습니다.")
         except Exception as e:
             st.error(f"오류가 발생했습니다: {e}")
+
 
 
