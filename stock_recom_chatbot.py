@@ -45,13 +45,26 @@ def crawl_naver_news(company_name, start_date, end_date):
 
 # 텍스트 요약 함수
 def summarize_text(texts):
-    # 텍스트가 너무 짧으면 요약하지 않도록 처리
-    if not texts or len(" ".join(texts)) < 50:
-        return "요약할 내용이 충분하지 않습니다."
-    
-    summarizer = pipeline("summarization")
-    summary = summarizer(" ".join(texts), max_length=300, min_length=100, do_sample=False)
-    return summary[0]['summary_text']
+    # 내용이 비어있지 않으면 요약
+    if texts:
+        summarizer = pipeline("summarization")
+        summaries = []
+        
+        # 각 뉴스 기사를 개별적으로 요약
+        for text in texts:
+            if text.strip():  # 비어있는 텍스트는 건너뜀
+                try:
+                    summary = summarizer(text, max_length=150, min_length=50, do_sample=False)
+                    summaries.append(summary[0]['summary_text'])
+                except Exception as e:
+                    summaries.append(f"요약 중 오류 발생: {e}")
+            else:
+                summaries.append("내용 없음")
+
+        # 모든 요약을 하나로 합침
+        return "\n\n".join(summaries)
+    else:
+        return "요약할 내용이 없습니다."
 
 # Streamlit 앱 구성
 st.title("📈 기업 뉴스 요약")
@@ -87,6 +100,7 @@ if st.button("뉴스 요약"):
                 st.warning("관련 뉴스를 찾을 수 없습니다.")
         except Exception as e:
             st.error(f"오류가 발생했습니다: {e}")
+
 
 
 
