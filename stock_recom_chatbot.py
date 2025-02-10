@@ -45,6 +45,10 @@ def crawl_naver_news(company_name, start_date, end_date):
 
 # 텍스트 요약 함수
 def summarize_text(texts):
+    # 텍스트가 너무 짧으면 요약하지 않도록 처리
+    if not texts or len(" ".join(texts)) < 50:
+        return "요약할 내용이 충분하지 않습니다."
+    
     summarizer = pipeline("summarization")
     summary = summarizer(" ".join(texts), max_length=300, min_length=100, do_sample=False)
     return summary[0]['summary_text']
@@ -83,6 +87,7 @@ if st.button("뉴스 요약"):
                 st.warning("관련 뉴스를 찾을 수 없습니다.")
         except Exception as e:
             st.error(f"오류가 발생했습니다: {e}")
+
 
 
 
