@@ -1,129 +1,96 @@
 import streamlit as st
-import requests
-from bs4 import BeautifulSoup
-import time
-import random
-import urllib.parse
-import re
-from datetime import datetime, timedelta
-from transformers import RagTokenizer, RagRetriever, RagSequenceForGeneration
+import torch
+import mplfinance as mpf
+import FinanceDataReader as fdr
+from langchain.document_loaders import TextLoader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.vectorstores import Chroma
+from langchain.embeddings import HuggingFaceEmbeddings
+from langchain.chat_models import ChatOpenAI
+from langchain.chains import RetrievalQA
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
-# 유사 단어 필터링을 위한 정규화 함수
-def 정규화_단어(단어):
-    단어 = re.sub(r'[^a-zA-Z가-힣]', '', 단어).lower()
-    return 단어
 
-# 뉴스 크롤링 함수 (여러 페이지 처리)
-def 네이버_뉴스_크롤링(기업명, 시작날짜, 종료날짜, 페이지_수=5):
-    try:
-        # 기업명 URL 인코딩
-        encoded_query = urllib.parse.quote(기업명)
-        date_filter = f"nso=so:r,p:from{시작날짜}to{종료날짜}"
+def process_news_data(news_items):
+    """RecursiveCharacterTextSplitter를 활용하여 뉴스 조각내기"""
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
+    texts = [news['title'] + " " + news['description'] for news in news_items]
+    split_texts = text_splitter.split_text(" ".join(texts))
+    return split_texts
 
-        titles, channels, links, contents = [], [], [], []
-        
-        for page in range(1, 페이지_수 + 1):
-            url = f"https://search.naver.com/search.naver?where=news&sm=tab_jum&query={encoded_query}&{date_filter}&start={((page-1)*10) + 1}"
 
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            }
+def create_embeddings(texts):
+    """KoBERT를 활용하여 뉴스 임베딩 생성 및 저장"""
+    embeddings = HuggingFaceEmbeddings(model_name="skt/kobert-base-v1")
+    vector_store = Chroma.from_texts(texts, embeddings)
+    return vector_store
 
-            # 요청을 보내고 응답 받기
-            time.sleep(random.uniform(1, 3))  # 서버 과부하 방지를 위한 지연
-            response = requests.get(url, headers=headers)
-            response.raise_for_status()
-            soup = BeautifulSoup(response.content, 'html.parser')
 
-            news_items = soup.select("ul.list_news > li")  # 뉴스 항목 선택
+def retrieve_relevant_sentences(query, vector_store):
+    """LangChain Retriever를 사용하여 관련 문장 검색"""
+    retriever = vector_store.as_retriever()
+    relevant_docs = retriever.get_relevant_documents(query)
+    return " ".join([doc.page_content for doc in relevant_docs])
 
-            for item in news_items:
-                title_element = item.select_one("a.news_tit")
-                title = title_element.text.strip() if title_element else "제목 없음"
-                channel_element = item.select_one("a.info")
-                channel = channel_element.text.strip() if channel_element else "언론사 정보 없음"
-                link = title_element['href'] if title_element else "링크 없음"
 
-                content_element = item.select_one("div.news_dsc")
-                content = content_element.text.strip() if content_element else ""
+def generate_summary(query, retriever, openai_key):
+    """GPT-4를 활용하여 요약 생성"""
+    llm = ChatOpenAI(openai_api_key=openai_key, model_name='gpt-4', temperature=0)
+    qa_chain = RetrievalQA(llm=llm, retriever=retriever)
+    return qa_chain.run(query)
 
-                # 링크가 상대 경로일 경우 절대 경로로 변환
-                if link and not link.startswith("http"):
-                    link = "https://search.naver.com" + link
 
-                if 기업명 in title or 기업명 in content:
-                    titles.append(title)
-                    channels.append(channel)
-                    links.append(link)
-                    contents.append(content)
+def analyze_sentiment(news_text):
+    """KoBERT 모델을 사용하여 뉴스 감성 분석"""
+    tokenizer = AutoTokenizer.from_pretrained("skt/kobert-base-v1")
+    model = AutoModelForSequenceClassification.from_pretrained("skt/kobert-base-v1")
 
-        filtered_titles = []
-        filtered_channels = []
-        filtered_links = []
-        filtered_contents = []
-        seen_titles = set()  # 이미 등장한 제목을 추적
-        seen_words = set()   # 이미 등장한 단어를 추적
+    inputs = tokenizer(news_text, return_tensors="pt", truncation=True, padding=True, max_length=512)
+    outputs = model(**inputs)
+    probs = torch.nn.functional.softmax(outputs.logits, dim=-1)
+    sentiment = "긍정" if probs[0][1] > probs[0][0] else "부정"
+    return sentiment
 
-        for title, channel, link, content in zip(titles, channels, links, contents):
-            title_without_company = title.replace(기업명, '').strip()
-            words = set(정규화_단어(word) for word in title_without_company.split())
-            
-            if title not in seen_titles and not seen_words & words:
-                filtered_titles.append(title)
-                filtered_channels.append(channel)
-                filtered_links.append(link)
-                filtered_contents.append(content)
-                seen_titles.add(title)
-                seen_words.update(words)
 
-        if filtered_titles:
-            return filtered_titles, filtered_channels, filtered_links, filtered_contents
-        else:
-            return None
-    except requests.exceptions.RequestException as e:
-        return None
-    except Exception as e:
-        return None
+def visualize_stock(symbol, period):
+    """MPLFinance를 활용한 주가 시각화 (일/주/월/년)"""
+    df = fdr.DataReader(symbol, '2024-01-01')
+    if period == "일":
+        df = df.tail(30)
+    elif period == "주":
+        df = df.resample('W').last()
+    elif period == "월":
+        df = df.resample('M').last()
+    elif period == "년":
+        df = df.resample('Y').last()
+    mpf.plot(df, type='candle', style='charles', title=f"{symbol} 주가 ({period})", volume=True)
 
-# RAG 모델 로드
-tokenizer = RagTokenizer.from_pretrained("facebook/rag-token-nq")
-retriever = RagRetriever.from_pretrained("facebook/rag-token-nq")
-model = RagSequenceForGeneration.from_pretrained("facebook/rag-token-nq")
 
-# 기업명과 날짜 범위 입력 받기
-st.title("기업 뉴스 요약")
+st.title("국내 주식 뉴스 기반 추천 QA 챗봇")
+company_name = st.text_input("기업명을 입력하세요:")
+openai_key = st.text_input("OpenAI API Key", type="password")
+period = st.selectbox("조회 기간", ["일", "주", "월", "년"])
 
-search_query = st.text_input("검색할 기업명을 입력하세요:")
-search_days = st.number_input("며칠 동안의 기사를 검색할까요? (예: 3 입력 시 3일 전부터 오늘까지):", min_value=1, value=3)
+if st.button("분석 실행"):
+    # 뉴스 데이터 수집 (예제 데이터 사용)
+    news_items = [
+        {"title": "기업 A의 주가 상승", "description": "기업 A의 주가가 급등했습니다."},
+        {"title": "기업 B의 실적 발표", "description": "기업 B가 좋은 실적을 발표했습니다."}
+    ]
+    texts = process_news_data(news_items)
+    vector_store = create_embeddings(texts)
+    retriever = vector_store.as_retriever()
+    context = retrieve_relevant_sentences(company_name, vector_store)
+    summary = generate_summary(company_name, retriever, openai_key)
+    sentiment = analyze_sentiment(context)
+    
+    st.subheader("뉴스 요약")
+    st.write(summary)
+    st.subheader("감성 분석 결과")
+    st.write(f"{company_name} 관련 뉴스 감성: {sentiment}")
+    
+    visualize_stock(company_name, period)
 
-# 날짜 계산
-today = datetime.today()
-start_date = today - timedelta(days=search_days)
-start_date_str = start_date.strftime('%Y%m%d')
-end_date_str = today.strftime('%Y%m%d')
-
-if search_query:
-    result = 네이버_뉴스_크롤링(search_query, start_date_str, end_date_str)
-
-    if result:
-        titles, channels, links, contents = result
-        st.write(f"**{search_query}** 관련 뉴스 ({start_date_str}부터 {end_date_str}까지)")
-
-        for title, channel, link, content in zip(titles, channels, links, contents):
-            # 검색된 뉴스 기사로부터 RAG를 사용하여 요약 생성
-            inputs = tokenizer(content, return_tensors="pt", max_length=1024, truncation=True)
-            retrieved_docs = retriever.retrieve(input_ids=inputs["input_ids"])
-            generated = model.generate(input_ids=inputs["input_ids"], context_input_ids=retrieved_docs["context_input_ids"])
-
-            summary = tokenizer.decode(generated[0], skip_special_tokens=True)
-
-            st.subheader(f"제목: {title}")
-            st.write(f"**언론사**: {channel}")
-            st.write(f"**링크**: [링크로 이동]({link})")
-            st.write(f"**요약**: {summary}")
-            st.write("---")
-    else:
-        st.write("🔍 해당 기업에 관련된 뉴스가 없습니다.")
 
 
 
