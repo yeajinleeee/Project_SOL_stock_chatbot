@@ -1,4 +1,3 @@
-import streamlit as st
 import requests
 from bs4 import BeautifulSoup
 import time
@@ -6,16 +5,17 @@ import random
 import urllib.parse
 import re
 from datetime import datetime, timedelta
-from transformers import pipeline
 
 # 유사 단어 필터링을 위한 정규화 함수
 def 정규화_단어(단어):
+    # 숫자나 특수문자 제거하고 소문자화
     단어 = re.sub(r'[^a-zA-Z가-힣]', '', 단어).lower()
     return 단어
 
 # 뉴스 크롤링 함수 (여러 페이지 처리)
 def 네이버_뉴스_크롤링(기업명, 시작날짜, 종료날짜, 페이지_수=5):
     try:
+        # 기업명 URL 인코딩
         encoded_query = urllib.parse.quote(기업명)
         date_filter = f"nso=so:r,p:from{시작날짜}to{종료날짜}"
 
@@ -67,82 +67,52 @@ def 네이버_뉴스_크롤링(기업명, 시작날짜, 종료날짜, 페이지_
         seen_words = set()   # 이미 등장한 단어를 추적
 
         for title, channel, link, content in zip(titles, channels, links, contents):
+            # 기업명을 제목에서 제외하고 단어 단위로 분리
             title_without_company = title.replace(기업명, '').strip()
             words = set(정규화_단어(word) for word in title_without_company.split())
             
+            # 제목이 이미 등장했거나, 제목에 포함된 단어들이 이미 등장한 단어라면 필터링
             if title not in seen_titles and not seen_words & words:
                 filtered_titles.append(title)
                 filtered_channels.append(channel)
                 filtered_links.append(link)
                 filtered_contents.append(content)
-                seen_titles.add(title)
-                seen_words.update(words)
+                seen_titles.add(title)  # 새로운 제목은 seen_titles에 추가
+                seen_words.update(words)  # 새로운 단어들은 seen_words에 추가
 
+        # 결과 반환
         if filtered_titles:
             return filtered_titles, filtered_channels, filtered_links, filtered_contents
         else:
-            st.warning(f"🔍 '{기업명}' 관련 뉴스가 {시작날짜}부터 {종료날짜}까지 없습니다.")
+            print(f"🔍 '{기업명}' 관련 뉴스가 {시작날짜}부터 {종료날짜}까지 없습니다.")
             return None
     except requests.exceptions.RequestException as e:
-        st.error(f"❌ 요청 에러 발생: {e}")
+        print(f"❌ 요청 에러 발생: {e}")
         return None
     except Exception as e:
-        st.error(f"❌ 크롤링 중 에러 발생: {e}")
+        print(f"❌ 크롤링 중 에러 발생: {e}")
         return None
 
-# 텍스트 요약 함수
-def summarize_text(texts):
-    if texts:
-        summarizer = pipeline("summarization")
-        summaries = []
-        
-        for text in texts:
-            if text.strip():  
-                try:
-                    summary = summarizer(text, max_length=150, min_length=50, do_sample=False)
-                    summaries.append(summary[0]['summary_text'])
-                except Exception as e:
-                    summaries.append(f"요약 중 오류 발생: {e}")
-            else:
-                summaries.append("내용 없음")
+# 사용자로부터 기업명과 검색할 날짜 범위를 입력 받기
+search_query = input("검색할 기업명을 입력하세요: ")
+search_days = int(input("며칠 동안의 기사를 검색할까요? (예: 3 입력 시 3일 전부터 오늘까지): "))
 
-        return "\n\n".join(summaries)
-    else:
-        return "요약할 내용이 없습니다."
+# 날짜 계산
+today = datetime.today()
+start_date = today - timedelta(days=search_days)
+start_date_str = start_date.strftime('%Y%m%d')
+end_date_str = today.strftime('%Y%m%d')
 
-# Streamlit 앱 구성
-st.title("📈 기업 뉴스 요약")
-st.subheader("기업명을 입력하여 해당 기업의 최신 뉴스를 요약해줍니다.")
+# 뉴스 크롤링 함수 실행
+result = 네이버_뉴스_크롤링(search_query, start_date_str, end_date_str)
 
-# 사용자 입력
-search_query = st.text_input("검색할 기업명을 입력하세요:", value="삼성전자")
-search_days = st.slider("검색 기간 (일 단위)", 1, 30, 7)
+if result:
+    titles, channels, links, contents = result
+    for title, channel, link, content in zip(titles, channels, links, contents):
+        print(f"\n\n제목: {title}\n언론사: {channel}\n링크: {link}\n본문: {content[:100]}...\n")
+else:
+    print("❌ 크롤링에 실패했습니다.")
 
-# 검색 버튼
-if st.button("뉴스 요약"):
-    with st.spinner("뉴스를 수집 중입니다..."):
-        try:
-            today = datetime.today()
-            start_date = today - timedelta(days=search_days)
-            start_date_str = start_date.strftime('%Y%m%d')
-            end_date_str = today.strftime('%Y%m%d')
-
-            # 뉴스 크롤링 실행 (최대 5페이지 가져오기)
-            result = 네이버_뉴스_크롤링(search_query, start_date_str, end_date_str, 페이지_수=5)
-
-            if result:
-                titles, channels, links, contents = result
-                st.success(f"{len(titles)}개의 뉴스를 가져왔습니다.")
-
-                # 뉴스 내용 요약
-                summary = summarize_text(contents)
-
-                st.markdown("### 기업 뉴스 요약")
-                st.write(summary)
-            else:
-                st.warning("관련 뉴스를 찾을 수 없습니다.")
-        except Exception as e:
-            st.error(f"오류가 발생했습니다: {e}")
 
 
 
