@@ -1,3 +1,4 @@
+import streamlit as st
 import requests
 from bs4 import BeautifulSoup
 import time
@@ -5,10 +6,10 @@ import random
 import urllib.parse
 import re
 from datetime import datetime, timedelta
+from transformers import pipeline
 
 # 유사 단어 필터링을 위한 정규화 함수
 def 정규화_단어(단어):
-    # 숫자나 특수문자 제거하고 소문자화
     단어 = re.sub(r'[^a-zA-Z가-힣]', '', 단어).lower()
     return 단어
 
@@ -43,22 +44,19 @@ def 네이버_뉴스_크롤링(기업명, 시작날짜, 종료날짜, 페이지_
                 channel = channel_element.text.strip() if channel_element else "언론사 정보 없음"
                 link = title_element['href'] if title_element else "링크 없음"
 
-                # 본문 내용 추출 (기업명이 본문에 포함되어 있는지 확인)
                 content_element = item.select_one("div.news_dsc")
                 content = content_element.text.strip() if content_element else ""
 
                 # 링크가 상대 경로일 경우 절대 경로로 변환
                 if link and not link.startswith("http"):
-                    link = "https://search.naver.com" + link  # 네이버 뉴스 링크 앞에 base URL 붙이기
+                    link = "https://search.naver.com" + link
 
-                # 기업명이 제목에 포함된 뉴스만 필터링하거나 본문에 포함된 뉴스도 포함
                 if 기업명 in title or 기업명 in content:
                     titles.append(title)
                     channels.append(channel)
                     links.append(link)
                     contents.append(content)
 
-        # 중복된 제목 필터링 (제목 기준)
         filtered_titles = []
         filtered_channels = []
         filtered_links = []
@@ -67,35 +65,31 @@ def 네이버_뉴스_크롤링(기업명, 시작날짜, 종료날짜, 페이지_
         seen_words = set()   # 이미 등장한 단어를 추적
 
         for title, channel, link, content in zip(titles, channels, links, contents):
-            # 기업명을 제목에서 제외하고 단어 단위로 분리
             title_without_company = title.replace(기업명, '').strip()
             words = set(정규화_단어(word) for word in title_without_company.split())
             
-            # 제목이 이미 등장했거나, 제목에 포함된 단어들이 이미 등장한 단어라면 필터링
             if title not in seen_titles and not seen_words & words:
                 filtered_titles.append(title)
                 filtered_channels.append(channel)
                 filtered_links.append(link)
                 filtered_contents.append(content)
-                seen_titles.add(title)  # 새로운 제목은 seen_titles에 추가
-                seen_words.update(words)  # 새로운 단어들은 seen_words에 추가
+                seen_titles.add(title)
+                seen_words.update(words)
 
-        # 결과 반환
         if filtered_titles:
             return filtered_titles, filtered_channels, filtered_links, filtered_contents
         else:
-            print(f"🔍 '{기업명}' 관련 뉴스가 {시작날짜}부터 {종료날짜}까지 없습니다.")
             return None
     except requests.exceptions.RequestException as e:
-        print(f"❌ 요청 에러 발생: {e}")
         return None
     except Exception as e:
-        print(f"❌ 크롤링 중 에러 발생: {e}")
         return None
 
-# 사용자로부터 기업명과 검색할 날짜 범위를 입력 받기
-search_query = input("검색할 기업명을 입력하세요: ")
-search_days = int(input("며칠 동안의 기사를 검색할까요? (예: 3 입력 시 3일 전부터 오늘까지): "))
+# 기업명과 날짜 범위 입력 받기
+st.title("기업 뉴스 요약")
+
+search_query = st.text_input("검색할 기업명을 입력하세요:")
+search_days = st.number_input("며칠 동안의 기사를 검색할까요? (예: 3 입력 시 3일 전부터 오늘까지):", min_value=1, value=3)
 
 # 날짜 계산
 today = datetime.today()
@@ -103,15 +97,28 @@ start_date = today - timedelta(days=search_days)
 start_date_str = start_date.strftime('%Y%m%d')
 end_date_str = today.strftime('%Y%m%d')
 
-# 뉴스 크롤링 함수 실행
-result = 네이버_뉴스_크롤링(search_query, start_date_str, end_date_str)
+if search_query:
+    result = 네이버_뉴스_크롤링(search_query, start_date_str, end_date_str)
 
-if result:
-    titles, channels, links, contents = result
-    for title, channel, link, content in zip(titles, channels, links, contents):
-        print(f"\n\n제목: {title}\n언론사: {channel}\n링크: {link}\n본문: {content[:100]}...\n")
-else:
-    print("❌ 크롤링에 실패했습니다.")
+    if result:
+        titles, channels, links, contents = result
+        st.write(f"**{search_query}** 관련 뉴스 ({start_date_str}부터 {end_date_str}까지)")
+
+        # 뉴스 기사 요약 및 링크만 출력
+        summarizer = pipeline("summarization")
+
+        for title, channel, link, content in zip(titles, channels, links, contents):
+            # 기사 내용 요약
+            summary = summarizer(content[:1024], max_length=150, min_length=50, do_sample=False)[0]['summary_text']
+
+            st.subheader(f"제목: {title}")
+            st.write(f"**언론사**: {channel}")
+            st.write(f"**링크**: [링크로 이동]({link})")
+            st.write(f"**요약**: {summary}")
+            st.write("---")
+    else:
+        st.write("🔍 해당 기업에 관련된 뉴스가 없습니다.")
+
 
 
 
