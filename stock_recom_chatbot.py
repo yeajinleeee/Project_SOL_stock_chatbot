@@ -225,10 +225,10 @@ def visualize_stock(company, period):
         type='candle',
         style='charles',
         title=f"{company}({ticker}) 주가 ({period})",
-        volume=True,
+        volume=True, 
         returnfig=True
     )
     st.pyplot(fig)
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
