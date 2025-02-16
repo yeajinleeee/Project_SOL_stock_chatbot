@@ -17,6 +17,8 @@ from langchain.memory import ConversationBufferMemory
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
 import os
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
 
 # 현재 파일(파이썬 스크립트) 기준 폰트 경로를 지정
 font_path = os.path.join(os.path.dirname(__file__), 'fonts', 'NanumGothic.ttf')
@@ -117,7 +119,36 @@ def get_text_chunks(news_data):
         chunk_overlap=100,
         length_function=tiktoken_len
     )
-    return text_splitter.create_documents(texts)
+    text_chunks = text_splitter.create_documents(texts)
+    
+    # 뉴스 제목 간의 코사인 유사도를 계산하여 유사한 제목을 제거
+    titles = [item['title'] for item in news_data]
+    
+    # 임베딩 생성 (HuggingFaceEmbeddings 등)
+    embeddings = HuggingFaceEmbeddings(
+        model_name="jhgan/ko-sroberta-multitask",
+        model_kwargs={'device': 'cpu'},
+        encode_kwargs={'normalize_embeddings': True}
+    )
+    
+    # 제목을 벡터화하여 코사인 유사도 계산
+    title_embeddings = embeddings.embed_documents(titles)
+    similarity_matrix = cosine_similarity(title_embeddings)
+
+    # 유사도 값이 0.9 이상인 제목들 제거 (임계값은 조정 가능)
+    unique_titles_indices = []
+    for i in range(len(similarity_matrix)):
+        if not any(similarity_matrix[i][j] > 0.9 for j in unique_titles_indices):
+            unique_titles_indices.append(i)
+
+    # 유사하지 않은 제목에 해당하는 뉴스만 선택
+    filtered_news_data = [news_data[i] for i in unique_titles_indices]
+    
+    # 필터링된 뉴스 데이터로 다시 텍스트 청크 생성
+    filtered_texts = [f"{item['title']}\n{item['content']}" for item in filtered_news_data]
+    filtered_text_chunks = text_splitter.create_documents(filtered_texts)
+    
+    return filtered_text_chunks
 
 def get_vectorstore(text_chunks):
     embeddings = HuggingFaceEmbeddings(
