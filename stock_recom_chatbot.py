@@ -121,28 +121,20 @@ def get_text_chunks(news_data):
     )
     text_chunks = text_splitter.create_documents(texts)
     
-    # 뉴스 제목 간의 코사인 유사도를 계산하여 유사한 제목을 제거
+    # 뉴스 제목 간의 겹치는 단어가 있으면 해당 제목을 제거하는 과정
     titles = [item['title'] for item in news_data]
-    
-    # 임베딩 생성 (HuggingFaceEmbeddings 등)
-    embeddings = HuggingFaceEmbeddings(
-        model_name="jhgan/ko-sroberta-multitask",
-        model_kwargs={'device': 'cpu'},
-        encode_kwargs={'normalize_embeddings': True}
-    )
-    
-    # 제목을 벡터화하여 코사인 유사도 계산
-    title_embeddings = embeddings.embed_documents(titles)
-    similarity_matrix = cosine_similarity(title_embeddings)
+    filtered_titles = []
+    for i, title in enumerate(titles):
+        is_duplicate = False
+        for j in range(i):
+            if any(word in titles[j] for word in title.split()):
+                is_duplicate = True
+                break
+        if not is_duplicate:
+            filtered_titles.append(title)
 
-    # 유사도 값이 0.9 이상인 제목들 제거 (임계값은 조정 가능)
-    unique_titles_indices = []
-    for i in range(len(similarity_matrix)):
-        if not any(similarity_matrix[i][j] > 0.9 for j in unique_titles_indices):
-            unique_titles_indices.append(i)
-
-    # 유사하지 않은 제목에 해당하는 뉴스만 선택
-    filtered_news_data = [news_data[i] for i in unique_titles_indices]
+    # 겹치는 제목에 해당하는 뉴스만 선택
+    filtered_news_data = [news_data[i] for i, title in enumerate(titles) if title in filtered_titles]
     
     # 필터링된 뉴스 데이터로 다시 텍스트 청크 생성
     filtered_texts = [f"{item['title']}\n{item['content']}" for item in filtered_news_data]
