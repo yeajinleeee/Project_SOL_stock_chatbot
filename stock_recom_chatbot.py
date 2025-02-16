@@ -112,8 +112,25 @@ def tiktoken_len(text):
     return len(tokens)
 
 def get_text_chunks(news_data):
-    # 뉴스 요약 없이 제목과 내용을 그대로 사용
-    texts = [f"{item['title']}\n{item['content']}" for item in news_data]
+    # 뉴스 제목을 기준으로 중복된 제목을 걸러냄
+    titles = [item['title'] for item in news_data]
+    filtered_titles = []
+
+    for i, title in enumerate(titles):
+        is_duplicate = False
+        for j in range(i):
+            # 제목 간 겹치는 단어가 있으면 중복으로 간주
+            if any(word in titles[j] for word in title.split()):
+                is_duplicate = True
+                break
+        if not is_duplicate:
+            filtered_titles.append(title)
+
+    # 필터링된 제목에 해당하는 뉴스만 선택
+    filtered_news_data = [news_data[i] for i, title in enumerate(titles) if title in filtered_titles]
+    
+    # 필터링된 뉴스 데이터로 다시 텍스트 청크 생성
+    texts = [f"{item['title']}\n{item['content']}" for item in filtered_news_data]
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=900,
         chunk_overlap=100,
@@ -121,26 +138,7 @@ def get_text_chunks(news_data):
     )
     text_chunks = text_splitter.create_documents(texts)
     
-    # 뉴스 제목 간의 겹치는 단어가 있으면 해당 제목을 제거하는 과정
-    titles = [item['title'] for item in news_data]
-    filtered_titles = []
-    for i, title in enumerate(titles):
-        is_duplicate = False
-        for j in range(i):
-            if any(word in titles[j] for word in title.split()):
-                is_duplicate = True
-                break
-        if not is_duplicate:
-            filtered_titles.append(title)
-
-    # 겹치는 제목에 해당하는 뉴스만 선택
-    filtered_news_data = [news_data[i] for i, title in enumerate(titles) if title in filtered_titles]
-    
-    # 필터링된 뉴스 데이터로 다시 텍스트 청크 생성
-    filtered_texts = [f"{item['title']}\n{item['content']}" for item in filtered_news_data]
-    filtered_text_chunks = text_splitter.create_documents(filtered_texts)
-    
-    return filtered_text_chunks
+    return text_chunks
 
 def get_vectorstore(text_chunks):
     embeddings = HuggingFaceEmbeddings(
@@ -225,10 +223,10 @@ def visualize_stock(company, period):
         type='candle',
         style='charles',
         title=f"{company}({ticker}) 주가 ({period})",
-        volume=True, 
+        volume=True,
         returnfig=True
     )
     st.pyplot(fig)
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
