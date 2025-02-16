@@ -18,9 +18,6 @@ import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
 import os
 
-# 하드코딩된 OpenAI API Key
-OPENAI_API_KEY = "your-openai-api-key-here"
-
 # 현재 파일(파이썬 스크립트) 기준 폰트 경로를 지정
 font_path = os.path.join(os.path.dirname(__file__), 'fonts', 'NanumGothic.ttf')
 if os.path.exists(font_path):
@@ -31,7 +28,7 @@ else:
     st.warning("폰트 파일을 찾을 수 없습니다. 한글이 깨질 수 있습니다.")
 
 def main():
-    st.set_page_config(page_title="Stock Analysis Chatbot", page_icon=":chart_with_upwards_trend:")
+    st.set_page_config(page_title="Stock Recommendation Chatbot", page_icon=":chart_with_upwards_trend:")
     st.title("_기업 정보 분석 주식 추천 :red[QA Chat]_ :chart_with_upwards_trend:")
 
     if "conversation" not in st.session_state:
@@ -42,14 +39,16 @@ def main():
         st.session_state.processComplete = None
 
     with st.sidebar:
+        openai_api_key = st.text_input("OpenAI API Key", key="chatbot_api_key", type="password")
         company_name = st.text_input("분석할 기업명 (코스피 상장)")
         process = st.button("분석 시작")
 
     if process:
-        if not company_name:
-            st.info("기업명을 입력해주세요.")
+        if not openai_api_key or not company_name:
+            st.info("OpenAI API 키와 기업명을 입력해주세요.")
             st.stop()
 
+        # 뉴스 크롤링 및 벡터 저장소 준비
         news_data = crawl_news(company_name)
         if not news_data:
             st.warning("해당 기업의 최근 뉴스를 찾을 수 없습니다.")
@@ -58,7 +57,8 @@ def main():
         text_chunks = get_text_chunks(news_data)
         vectorstore = get_vectorstore(text_chunks)
 
-        st.session_state.conversation = create_chat_chain(vectorstore, OPENAI_API_KEY)
+        # 챗봇 설정
+        st.session_state.conversation = create_chat_chain(vectorstore, openai_api_key)
         st.session_state.processComplete = True
 
         st.subheader(f"📈 {company_name} 최근 주가 추이")
@@ -138,7 +138,6 @@ def get_ticker(company):
     """
     FinanceDataReader를 통해 KRX 상장 기업 정보를 불러오고,
     입력한 기업명에 해당하는 티커 코드를 반환합니다.
-    환경에 따라 컬럼명이 다를 수 있으므로 여러 경우를 처리합니다.
     """
     try:
         listing = fdr.StockListing('KRX')
