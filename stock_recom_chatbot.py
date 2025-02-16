@@ -1,14 +1,13 @@
-import requests
-from bs4 import BeautifulSoup
-import time
-import random
-import urllib.parse
-import re
-from datetime import datetime, timedelta
 import streamlit as st
-import tiktoken
+import requests
+import random
+import time
+import urllib.parse
 import mplfinance as mpf
 import FinanceDataReader as fdr
+import tiktoken
+from bs4 import BeautifulSoup
+from datetime import datetime, timedelta
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.embeddings import HuggingFaceEmbeddings
 from langchain.vectorstores import FAISS
@@ -19,85 +18,17 @@ import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
 import os
 
-# 유사 단어 필터링을 위한 정규화 함수
-def 정규화_단어(단어):
-    단어 = re.sub(r'[^a-zA-Z가-힣]', '', 단어).lower()
-    return 단어
+# 현재 파일(파이썬 스크립트) 기준 폰트 경로를 지정
+font_path = os.path.join(os.path.dirname(__file__), 'fonts', 'NanumGothic.ttf')
+if os.path.exists(font_path):
+    font_name = fm.FontProperties(fname=font_path).get_name()
+    plt.rcParams['font.family'] = font_name
+    plt.rcParams['axes.unicode_minus'] = False
+else:
+    st.warning("폰트 파일을 찾을 수 없습니다. 한글이 깨질 수 있습니다.")
 
-# 뉴스 크롤링 함수 (여러 페이지 처리)
-def 네이버_뉴스_크롤링(기업명, 시작날짜, 종료날짜, 페이지_수=5):
-    try:
-        encoded_query = urllib.parse.quote(기업명)
-        date_filter = f"nso=so:r,p:from{시작날짜}to{종료날짜}"
-
-        titles, channels, links, contents = [], [], [], []
-
-        for page in range(1, 페이지_수 + 1):
-            url = f"https://search.naver.com/search.naver?where=news&sm=tab_jum&query={encoded_query}&{date_filter}&start={((page-1)*10) + 1}"
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            }
-
-            time.sleep(random.uniform(1, 3))
-            response = requests.get(url, headers=headers)
-            response.raise_for_status()
-            soup = BeautifulSoup(response.content, 'html.parser')
-
-            news_items = soup.select("ul.list_news > li")
-
-            for item in news_items:
-                title_element = item.select_one("a.news_tit")
-                title = title_element.text.strip() if title_element else "제목 없음"
-                channel_element = item.select_one("a.info")
-                channel = channel_element.text.strip() if channel_element else "언론사 정보 없음"
-                link = title_element['href'] if title_element else "링크 없음"
-
-                content_element = item.select_one("div.news_dsc")
-                content = content_element.text.strip() if content_element else ""
-
-                if link and not link.startswith("http"):
-                    link = "https://search.naver.com" + link
-
-                if 기업명 in title or 기업명 in content:
-                    titles.append(title)
-                    channels.append(channel)
-                    links.append(link)
-                    contents.append(content)
-
-        filtered_titles = []
-        filtered_channels = []
-        filtered_links = []
-        filtered_contents = []
-        seen_titles = set()
-        seen_words = set()
-
-        for title, channel, link, content in zip(titles, channels, links, contents):
-            title_without_company = title.replace(기업명, '').strip()
-            words = set(정규화_단어(word) for word in title_without_company.split())
-
-            if title not in seen_titles and not seen_words & words:
-                filtered_titles.append(title)
-                filtered_channels.append(channel)
-                filtered_links.append(link)
-                filtered_contents.append(content)
-                seen_titles.add(title)
-                seen_words.update(words)
-
-        if filtered_titles:
-            return filtered_titles, filtered_channels, filtered_links, filtered_contents
-        else:
-            print(f"🔍 '{기업명}' 관련 뉴스가 {시작날짜}부터 {종료날짜}까지 없습니다.")
-            return None
-    except requests.exceptions.RequestException as e:
-        print(f"❌ 요청 에러 발생: {e}")
-        return None
-    except Exception as e:
-        print(f"❌ 크롤링 중 에러 발생: {e}")
-        return None
-
-# 주식 추천 및 챗봇 부분
 def main():
-    st.set_page_config(page_title="Stock Analysis Chatbot", page_icon=":chart_with_upwards_trend:")
+    st.set_page_config(page_title="Stock Recommendation Chatbot", page_icon=":chart_with_upwards_trend:")
     st.title("_기업 정보 분석 주식 추천 :red[QA Chat]_ :chart_with_upwards_trend:")
 
     if "conversation" not in st.session_state:
@@ -117,29 +48,26 @@ def main():
             st.info("OpenAI API 키와 기업명을 입력해주세요.")
             st.stop()
 
-        # 뉴스 크롤링
-        news_data = 네이버_뉴스_크롤링(company_name, "20230101", "20230201")
+        # 뉴스 크롤링 및 벡터 저장소 준비
+        news_data = crawl_news(company_name)
         if not news_data:
             st.warning("해당 기업의 최근 뉴스를 찾을 수 없습니다.")
             st.stop()
 
-        titles, channels, links, contents = news_data
-
-        # 챗봇 시스템 설정
         text_chunks = get_text_chunks(news_data)
         vectorstore = get_vectorstore(text_chunks)
 
+        # 챗봇 설정
         st.session_state.conversation = create_chat_chain(vectorstore, openai_api_key)
         st.session_state.processComplete = True
 
-        # 기업 주식 분석
         st.subheader(f"📈 {company_name} 최근 주가 추이")
         visualize_stock(company_name, "일")
 
         with st.chat_message("assistant"):
             st.markdown("📢 최근 기업 뉴스 목록:")
-            for title, link in zip(titles, links):
-                st.markdown(f"**{title}** ([링크]({link}))")
+            for news in news_data:
+                st.markdown(f"- **{news['title']}** ([링크]({news['link']}))")
 
     if query := st.chat_input("질문을 입력해주세요."):
         with st.chat_message("user"):
@@ -155,12 +83,34 @@ def main():
                     for doc in result['source_documents']:
                         st.markdown(f"- [{doc.metadata['source']}]({doc.metadata['source']})")
 
+def crawl_news(company):
+    today = datetime.today()
+    start_date = (today - timedelta(days=5)).strftime('%Y%m%d')
+    end_date = today.strftime('%Y%m%d')
+    encoded_query = urllib.parse.quote(company)
+    url = f"https://search.naver.com/search.naver?where=news&query={encoded_query}&nso=so:r,p:from{start_date}to{end_date}"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    response = requests.get(url, headers=headers)
+    response.raise_for_status()
+    soup = BeautifulSoup(response.text, 'html.parser')
+    articles = soup.select("ul.list_news > li")
+
+    data = []
+    for article in articles[:10]:
+        title = article.select_one("a.news_tit").text
+        link = article.select_one("a.news_tit")['href']
+        content = article.select_one("div.news_dsc").text if article.select_one("div.news_dsc") else ""
+        data.append({"title": title, "link": link, "content": content})
+
+    return data
+
 def tiktoken_len(text):
     tokenizer = tiktoken.get_encoding("cl100k_base")
     tokens = tokenizer.encode(text)
     return len(tokens)
 
 def get_text_chunks(news_data):
+    # 뉴스 요약 없이 제목과 내용을 그대로 사용
     texts = [f"{item['title']}\n{item['content']}" for item in news_data]
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=900,
@@ -185,6 +135,10 @@ def create_chat_chain(vectorstore, openai_api_key):
         get_chat_history=lambda h: h, return_source_documents=True)
 
 def get_ticker(company):
+    """
+    FinanceDataReader를 통해 KRX 상장 기업 정보를 불러오고,
+    입력한 기업명에 해당하는 티커 코드를 반환합니다.
+    """
     try:
         listing = fdr.StockListing('KRX')
         if listing.empty:
@@ -193,6 +147,7 @@ def get_ticker(company):
             st.error("KRX 혹은 KOSPI 상장 기업 정보를 불러올 수 없습니다.")
             return None
 
+        # 여러 가지 컬럼 조합에 대해 처리합니다.
         if "Code" in listing.columns and "Name" in listing.columns:
             name_col = "Name"
             ticker_col = "Code"
@@ -206,12 +161,14 @@ def get_ticker(company):
             st.error("상장 기업 정보의 컬럼명이 예상과 다릅니다: " + ", ".join(listing.columns))
             return None
 
+        # 좌우 공백 제거 후 비교
         ticker_row = listing[listing[name_col].str.strip() == company.strip()]
         if ticker_row.empty:
-            st.error(f"입력한 기업명 '{company}'에 해당하는 정보가 없습니다.")
+            st.error(f"입력한 기업명 '{company}'에 해당하는 정보가 없습니다.\n예시: '삼성전자' 입력 시 티커 '005930'을 반환합니다.")
             return None
         else:
             ticker = ticker_row.iloc[0][ticker_col]
+            # 숫자 형식인 경우 6자리 문자열로 변환 (예: 5930 -> '005930')
             return str(ticker).zfill(6)
     except Exception as e:
         st.error(f"티커 변환 중 오류 발생: {e}")
@@ -221,7 +178,7 @@ def get_ticker(company):
 def visualize_stock(company, period):
     ticker = get_ticker(company)
     if not ticker:
-        st.error("해당 기업의 티커 코드를 찾을 수 없습니다.")
+        st.error("해당 기업의 티커 코드를 찾을 수 없습니다. 올바른 기업명을 입력했는지 확인해주세요.")
         return
 
     try:
@@ -230,9 +187,25 @@ def visualize_stock(company, period):
         st.error(f"주가 데이터를 불러오는 중 오류 발생: {e}")
         return
 
-    if df.empty:
-        st.warning("주가 데이터가 없습니다.")
-        return
+    if period == "일":
+        df = df.tail(30)
+    elif period == "주":
+        df = df.resample('W').last()
+    elif period == "월":
+        df = df.resample('M').last()
+    elif period == "년":
+        df = df.resample('Y').last()
 
-    df.index = pd.to_datetime(df.index)
-    mpf.plot(df, type='candle', style='charles', title=company, ylabel='Price')
+    # returnfig=True 옵션으로 mplfinance가 Figure+Axes를 생성하게 한 뒤, st.pyplot()으로 출력
+    fig, _ = mpf.plot(
+        df,
+        type='candle',
+        style='charles',
+        title=f"{company}({ticker}) 주가 ({period})",
+        volume=True,
+        returnfig=True
+    )
+    st.pyplot(fig)
+
+if __name__ == '__main__':
+    main()
