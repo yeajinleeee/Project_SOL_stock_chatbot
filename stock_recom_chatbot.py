@@ -1,7 +1,5 @@
 import streamlit as st
 import requests
-import random
-import time
 import urllib.parse
 import mplfinance as mpf
 import FinanceDataReader as fdr
@@ -15,7 +13,10 @@ from langchain.chat_models import ChatOpenAI
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
 import matplotlib.pyplot as plt
-import koreanize_matplotlib  # 한글 폰트 자동 적용
+import koreanize_matplotlib
+
+# 한글 폰트 설정
+plt.rcParams['axes.unicode_minus'] = False
 
 def main():
     st.set_page_config(page_title="Stock Analysis Chatbot", page_icon=":chart_with_upwards_trend:")
@@ -122,10 +123,6 @@ def create_chat_chain(vectorstore, openai_api_key):
         get_chat_history=lambda h: h, return_source_documents=True)
 
 def get_ticker(company):
-    """
-    FinanceDataReader를 통해 KRX 상장 기업 정보를 불러오고,
-    입력한 기업명에 해당하는 티커 코드를 반환합니다.
-    """
     try:
         listing = fdr.StockListing('KRX')
         if listing.empty:
@@ -144,7 +141,7 @@ def get_ticker(company):
             name_col = "기업명"
             ticker_col = "종목코드"
         else:
-            st.error("상장 기업 정보의 컬럼명이 예상과 다릅니다: " + ", ".join(listing.columns))
+            st.error("상장 기업 정보의 컬럼명이 예상과 다릅니다.")
             return None
 
         ticker_row = listing[listing[name_col].str.strip() == company.strip()]
@@ -152,8 +149,7 @@ def get_ticker(company):
             st.error(f"입력한 기업명 '{company}'에 해당하는 정보가 없습니다.")
             return None
         else:
-            ticker = ticker_row.iloc[0][ticker_col]
-            return str(ticker).zfill(6)
+            return str(ticker_row.iloc[0][ticker_col]).zfill(6)
     except Exception as e:
         st.error(f"티커 변환 중 오류 발생: {e}")
         return None
