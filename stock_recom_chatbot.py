@@ -15,17 +15,7 @@ from langchain.chat_models import ChatOpenAI
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
 import matplotlib.pyplot as plt
-import matplotlib.font_manager as fm
-import os
-
-# 현재 파일(파이썬 스크립트) 기준 폰트 경로를 지정
-font_path = os.path.join(os.path.dirname(__file__), 'fonts', 'NanumGothic.ttf')
-if os.path.exists(font_path):
-    font_name = fm.FontProperties(fname=font_path).get_name()
-    plt.rcParams['font.family'] = font_name
-    plt.rcParams['axes.unicode_minus'] = False
-else:
-    st.warning("폰트 파일을 찾을 수 없습니다. 한글이 깨질 수 있습니다.")
+import koreanize_matplotlib  # 한글 폰트 자동 적용
 
 def main():
     st.set_page_config(page_title="Stock Analysis Chatbot", page_icon=":chart_with_upwards_trend:")
@@ -108,7 +98,6 @@ def tiktoken_len(text):
     return len(tokens)
 
 def get_text_chunks(news_data):
-    # 뉴스 요약 없이 제목과 내용을 그대로 사용
     texts = [f"{item['title']}\n{item['content']}" for item in news_data]
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=900,
@@ -136,7 +125,6 @@ def get_ticker(company):
     """
     FinanceDataReader를 통해 KRX 상장 기업 정보를 불러오고,
     입력한 기업명에 해당하는 티커 코드를 반환합니다.
-    환경에 따라 컬럼명이 다를 수 있으므로 여러 경우를 처리합니다.
     """
     try:
         listing = fdr.StockListing('KRX')
@@ -146,7 +134,6 @@ def get_ticker(company):
             st.error("KRX 혹은 KOSPI 상장 기업 정보를 불러올 수 없습니다.")
             return None
 
-        # 여러 가지 컬럼 조합에 대해 처리합니다.
         if "Code" in listing.columns and "Name" in listing.columns:
             name_col = "Name"
             ticker_col = "Code"
@@ -160,24 +147,21 @@ def get_ticker(company):
             st.error("상장 기업 정보의 컬럼명이 예상과 다릅니다: " + ", ".join(listing.columns))
             return None
 
-        # 좌우 공백 제거 후 비교
         ticker_row = listing[listing[name_col].str.strip() == company.strip()]
         if ticker_row.empty:
-            st.error(f"입력한 기업명 '{company}'에 해당하는 정보가 없습니다.\n예시: '삼성전자' 입력 시 티커 '005930'을 반환합니다.")
+            st.error(f"입력한 기업명 '{company}'에 해당하는 정보가 없습니다.")
             return None
         else:
             ticker = ticker_row.iloc[0][ticker_col]
-            # 숫자 형식인 경우 6자리 문자열로 변환 (예: 5930 -> '005930')
             return str(ticker).zfill(6)
     except Exception as e:
         st.error(f"티커 변환 중 오류 발생: {e}")
         return None
 
-
 def visualize_stock(company, period):
     ticker = get_ticker(company)
     if not ticker:
-        st.error("해당 기업의 티커 코드를 찾을 수 없습니다. 올바른 기업명을 입력했는지 확인해주세요.")
+        st.error("해당 기업의 티커 코드를 찾을 수 없습니다.")
         return
 
     try:
@@ -195,7 +179,6 @@ def visualize_stock(company, period):
     elif period == "년":
         df = df.resample('Y').last()
 
-    # returnfig=True 옵션으로 mplfinance가 Figure+Axes를 생성하게 한 뒤, st.pyplot()으로 출력
     fig, _ = mpf.plot(
         df,
         type='candle',
