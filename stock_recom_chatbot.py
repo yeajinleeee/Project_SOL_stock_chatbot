@@ -126,7 +126,7 @@ def get_text_chunks(news_data):
         is_duplicate = False
         for j in filtered_indices:
             sim = cosine_similarity([vectors[i]], [vectors[j]])[0][0]
-            if sim > 0.7:
+            if sim > 0.9:
                 is_duplicate = True
                 break
         if not is_duplicate:
