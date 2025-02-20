@@ -130,7 +130,7 @@ def get_text_chunks(news_data):
         is_duplicate = False
         for j in filtered_indices:
             sim = cosine_similarity([vectors[i]], [vectors[j]])[0][0]
-            if sim > 0.7:  # 유사도가 70% 이상인 뉴스들만 중복으로 판단
+            if sim > 0.5:  # 유사도가 70% 이상인 뉴스들만 중복으로 판단
                 is_duplicate = True
                 break
         if not is_duplicate:
