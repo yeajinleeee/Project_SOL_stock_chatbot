@@ -18,6 +18,7 @@ import matplotlib.font_manager as fm
 import os
 from sklearn.metrics.pairwise import cosine_similarity
 from sentence_transformers import SentenceTransformer
+from sklearn.feature_extraction.text import TfidfVectorizer
 import numpy as np
 
 # 현재 파일(파이썬 스크립트) 기준 폰트 경로를 지정
@@ -114,33 +115,34 @@ def crawl_news(company):
 
     return data
 
+
 def get_text_chunks(news_data):
     # 뉴스 제목과 내용을 결합하여 텍스트 리스트로 만듦
     texts = [f"{item['title']} {item['content']}" for item in news_data]
     
-    # Sentence-BERT 모델로 각 뉴스 기사의 임베딩 생성
-    model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
-    embeddings = model.encode(texts, show_progress_bar=True)
-
-    # 유사도 기반 중복 제거
-    filtered_news_data = []
-    filtered_embeddings = []
-
-    for i in range(len(embeddings)):
+    # TF-IDF 벡터화
+    vectorizer = TfidfVectorizer().fit_transform(texts)
+    vectors = vectorizer.toarray()
+    
+    # 중복된 뉴스 기사 필터링
+    filtered_indices = []
+    for i in range(len(vectors)):
         is_duplicate = False
-        for j in range(len(filtered_embeddings)):
-            similarity = cosine_similarity([embeddings[i]], [filtered_embeddings[j]])[0][0]
-            if similarity > 0.6:  
+        for j in filtered_indices:
+            sim = cosine_similarity([vectors[i]], [vectors[j]])[0][0]
+            if sim > 0.7:  # 유사도가 70% 이상인 뉴스들만 중복으로 판단
                 is_duplicate = True
                 break
         if not is_duplicate:
-            filtered_news_data.append(news_data[i])
-            filtered_embeddings.append(embeddings[i])
+            filtered_indices.append(i)
 
+    # 중복을 제거한 뉴스 데이터
+    filtered_news_data = [news_data[i] for i in filtered_indices]
+    
     # 텍스트 청크 분할
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=900, chunk_overlap=100)
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=900, chunk_overlap=100, length_function=tiktoken_len)
     text_chunks = text_splitter.create_documents([f"{item['title']}\n{item['content']}" for item in filtered_news_data])
-
+    
     return text_chunks
 
 def get_vectorstore(text_chunks):
