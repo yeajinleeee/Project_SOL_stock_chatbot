@@ -130,7 +130,7 @@ def get_text_chunks(news_data):
         is_duplicate = False
         for j in range(len(filtered_embeddings)):
             similarity = cosine_similarity([embeddings[i]], [filtered_embeddings[j]])[0][0]
-            if similarity > 0.7:  # 유사도가 70% 이상인 뉴스들만 중복으로 판단
+            if similarity > 0.6:  
                 is_duplicate = True
                 break
         if not is_duplicate:
