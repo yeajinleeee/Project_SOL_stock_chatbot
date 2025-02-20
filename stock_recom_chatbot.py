@@ -118,14 +118,23 @@ def tiktoken_len(text):
     return len(tokens)
 
 def get_text_chunks(news_data):
-    texts = [f"{item['title']}\n{item['content']}" for item in news_data]
-    metadatas = [{"source": item["link"]} for item in news_data]
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=900,
-        chunk_overlap=100,
-        length_function=tiktoken_len
-    )
-    return text_splitter.create_documents(texts, metadatas=metadatas)
+    texts = [f"{item['title']} {item['content']}" for item in news_data]
+    vectorizer = TfidfVectorizer().fit_transform(texts)
+    vectors = vectorizer.toarray()
+    filtered_indices = []
+    for i in range(len(vectors)):
+        is_duplicate = False
+        for j in filtered_indices:
+            sim = cosine_similarity([vectors[i]], [vectors[j]])[0][0]
+            if sim > 0.7:
+                is_duplicate = True
+                break
+        if not is_duplicate:
+            filtered_indices.append(i)
+    filtered_news_data = [news_data[i] for i in filtered_indices]
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=900, chunk_overlap=100, length_function=tiktoken_len)
+    text_chunks = text_splitter.create_documents([f"{item['title']}\n{item['content']}" for item in filtered_news_data])
+    return text_chunks
 
 def get_vectorstore(text_chunks):
     embeddings = HuggingFaceEmbeddings(
