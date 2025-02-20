@@ -15,3 +15,5 @@ mplfinance
 plotly
 loguru
 bs4
+TfidfVectorizer
+cosine_similarity
