@@ -102,15 +102,23 @@ def crawl_news(company):
     response.raise_for_status()
     soup = BeautifulSoup(response.text, 'html.parser')
     articles = soup.select("ul.list_news > li")
-
+    
     data = []
+    seen_news = set()  # 중복 제거를 위한 집합
+    
     for article in articles[:10]:
-        title = article.select_one("a.news_tit").text
-        link = article.select_one("a.news_tit")['href']
-        content = article.select_one("div.news_dsc").text if article.select_one("div.news_dsc") else ""
-        data.append({"title": title, "link": link, "content": content})
-
+        title = article.select_one("a.news_tit").text.strip()
+        link = article.select_one("a.news_tit")['href'].strip()
+        content = article.select_one("div.news_dsc").text.strip() if article.select_one("div.news_dsc") else ""
+        
+        news_identifier = (title, content)  # 제목과 내용 기반 중복 제거
+        
+        if news_identifier not in seen_news:
+            seen_news.add(news_identifier)
+            data.append({"title": title, "link": link, "content": content})
+    
     return data
+
 
 def tiktoken_len(text):
     tokenizer = tiktoken.get_encoding("cl100k_base")
