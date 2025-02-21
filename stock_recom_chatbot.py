@@ -104,20 +104,13 @@ def crawl_news(company):
     articles = soup.select("ul.list_news > li")
 
     data = []
-    seen_articles = set()
     for article in articles[:10]:
         title = article.select_one("a.news_tit").text
         link = article.select_one("a.news_tit")['href']
         content = article.select_one("div.news_dsc").text if article.select_one("div.news_dsc") else ""
-        
-        # 제목과 내용을 결합하여 중복 확인
-        news_identifier = (title.strip(), content.strip())
-        if news_identifier not in seen_articles:
-            seen_articles.add(news_identifier)
-            data.append({"title": title, "link": link, "content": content})
-    
-    return data
+        data.append({"title": title, "link": link, "content": content})
 
+    return data
 
 def tiktoken_len(text):
     tokenizer = tiktoken.get_encoding("cl100k_base")
