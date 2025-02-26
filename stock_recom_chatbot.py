@@ -382,7 +382,7 @@ def plot_stock_plotly(df, company, period):
 
 
 def get_stock_info(company_name):
-    ticker = company_name + '.KQ'  # 한국 상장 주식 예시 (삼성전자의 경우)
+    ticker = st.session_state.news_data + '.KQ'  # 한국 상장 주식 예시 (삼성전자의 경우)
     stock = yf.Ticker(ticker)
     stock_info = stock.history(period="1d")
     
@@ -399,13 +399,13 @@ def get_stock_info(company_name):
     
     return current_price, change_percent, stats
 
-if company_name:
+if st.session_state.news_data:
     # 주식 정보 가져오기
-    current_price, change_percent, stats = get_stock_info(company_name)
+    current_price, change_percent, stats = get_stock_info(st.session_state.news_data)
     
     # 기업 정보 요약 표시
     st.write(f"### 📊 **기업 정보 요약**")
-    st.write(f"- **기업명:** {company_name}")
+    st.write(f"- **기업명:** {st.session_state.news_data}")
     st.write(f"- **현재 주가:** {current_price:,.2f}원 ({change_percent:+.2f}%)")
     st.write(f"- **52주 최고/최저:** {stats['52주 최고/최저'][0]:,.2f}원 / {stats['52주 최고/최저'][1]:,.2f}원")
     st.write(f"- **시가총액:** {stats['시가총액']:.1f}조 원")
