@@ -379,38 +379,6 @@ def plot_stock_plotly(df, company, period):
     )
 
     st.plotly_chart(fig)
-
-
-def get_stock_info(company_name):
-    ticker = st.session_state.news_data + '.KQ'  # 한국 상장 주식 예시 (삼성전자의 경우)
-    stock = yf.Ticker(ticker)
-    stock_info = stock.history(period="1d")
-    
-    current_price = stock_info['Close'].iloc[-1]
-    change_percent = (current_price - stock_info['Close'].iloc[-2]) / stock_info['Close'].iloc[-2] * 100
-    
-    # 52주 최고/최저 값, 시가총액, PER, PBR 정보
-    stats = {
-        "52주 최고/최저": (stock.info['fiftyTwoWeekHigh'], stock.info['fiftyTwoWeekLow']),
-        "시가총액": stock.info['marketCap'] / 1e12,  # 조 단위로 표시
-        "PER": stock.info['trailingPE'],
-        "PBR": stock.info['priceToBook']
-    }
-    
-    return current_price, change_percent, stats
-
-if st.session_state.news_data:
-    # 주식 정보 가져오기
-    current_price, change_percent, stats = get_stock_info(st.session_state.news_data)
-    
-    # 기업 정보 요약 표시
-    st.write(f"### 📊 **기업 정보 요약**")
-    st.write(f"- **기업명:** {st.session_state.news_data}")
-    st.write(f"- **현재 주가:** {current_price:,.2f}원 ({change_percent:+.2f}%)")
-    st.write(f"- **52주 최고/최저:** {stats['52주 최고/최저'][0]:,.2f}원 / {stats['52주 최고/최저'][1]:,.2f}원")
-    st.write(f"- **시가총액:** {stats['시가총액']:.1f}조 원")
-    st.write(f"- **PER (주가수익비율):** {stats['PER']:.1f}")
-    st.write(f"- **PBR (주가순자산비율):** {stats['PBR']:.1f}")
     
 
 if __name__ == '__main__':
