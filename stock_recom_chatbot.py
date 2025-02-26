@@ -14,6 +14,13 @@ from langchain.memory import ConversationBufferMemory
 import pandas as pd
 import yfinance as yf
 import plotly.graph_objects as go
+import os
+import random
+from difflib import SequenceMatcher
+import urllib.parse
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+
 
 def main():
     st.set_page_config(page_title="Stock Analysis Chatbot", page_icon=":chart_with_upwards_trend:")
@@ -36,6 +43,7 @@ def main():
     with st.sidebar:
         openai_api_key = st.text_input("OpenAI API Key", key="chatbot_api_key", type="password")
         company_name = st.text_input("분석할 기업명 (코스피 상장)")
+        days = st.number_input("최근 며칠 동안의 기사를 검색할까요?", min_value=1, max_value=30, value=7)  # 기간을 사용자 입력받기        
         process = st.button("분석 시작")
 
     if process:
@@ -43,10 +51,11 @@ def main():
             st.info("OpenAI API 키와 기업명을 입력해주세요.")
             st.stop()
 
-        news_data = crawl_news(company_name)
+        news_data = crawl_news(company_name, days)
         if not news_data:
             st.warning("해당 기업의 최근 뉴스를 찾을 수 없습니다.")
             st.stop()
+            
 
         # 분석 결과를 session_state에 저장
         st.session_state.news_data = news_data
@@ -54,7 +63,7 @@ def main():
 
         text_chunks = get_text_chunks(news_data)
         vectorstore = get_vectorstore(text_chunks)
-
+        
         st.session_state.conversation = create_chat_chain(vectorstore, openai_api_key)
         st.session_state.processComplete = True
 
@@ -67,6 +76,7 @@ def main():
             horizontal=True,
             index=["1day", "week", "1month", "1year"].index(st.session_state.selected_period)
         )
+      
         if selected_period != st.session_state.selected_period:
             st.session_state.selected_period = selected_period
 
@@ -97,9 +107,42 @@ def main():
             else:
                 plot_stock_plotly(df, st.session_state.company_name, st.session_state.selected_period)
 
-        st.markdown("📢 최근 기업 뉴스 목록:")
-        for news in st.session_state.news_data:
-            st.markdown(f"- **{news['title']}** ([링크]({news['link']}))")
+        st.markdown("최근 기업 뉴스 목록을 보려면 누르시오")
+
+    if st.session_state.processComplete:
+        with st.expander("뉴스 보기"):
+            news_data = st.session_state.news_data
+
+            # 처음 10개 뉴스만 표시
+            for i, news in enumerate(news_data[:10]):
+                st.markdown(f"- **{news['title']}** ([링크]({news['link']}))")
+
+            # '더보기' 버튼 클릭 시 나머지 뉴스 표시
+            if len(news_data) > 10:
+                if st.button('더보기', key="show_more"):
+                    for news in news_data[10:]:
+                        st.markdown(f"- **{news['title']}** ([링크]({news['link']}))")
+
+    if st.session_state.processComplete:
+        with st.expander("기업 정보 분석"):
+            st.write(f"### 📰 **최신 뉴스 및 분석**")
+        
+            news_data = st.session_state.news_data
+            if news_data:
+                for idx, news in enumerate(news_data[:5], start=1):  # 최신 5개 뉴스만 표시
+                    st.write(f"### **{idx}️⃣ {news['title']}**")
+                    st.write(f"- **출처:** {news['source']} | **날짜:** {news['date']}")
+                    st.write(f"- **요약:** {news['summary']}")
+                    st.write(f"- **관련 키워드:** {', '.join(news.get('keywords', []))}")
+                    st.write(f"([링크]({news['link']}))")
+                    st.write("\n")
+                    
+            st.write(f"#### {st.session_state.company_name} 주식 요약:")
+            stock_summary = get_stock_summary(st.session_state.company_name)
+            if stock_summary:
+                st.markdown(stock_summary)
+
+                  
 
     # 채팅 부분: 사용자가 질문을 입력하면 대화가 이어짐
     if query := st.chat_input("질문을 입력해주세요."):
@@ -116,26 +159,80 @@ def main():
                     for doc in result['source_documents']:
                         st.markdown(f"- [{doc.metadata['source']}]({doc.metadata['source']})")
 
-def crawl_news(company):
+def crawl_news(company_name, days, threshold=0.3):
     today = datetime.today()
-    start_date = (today - timedelta(days=5)).strftime('%Y%m%d')
+    start_date = (today - timedelta(days=days)).strftime('%Y%m%d')
     end_date = today.strftime('%Y%m%d')
-    encoded_query = urllib.parse.quote(company)
-    url = f"https://search.naver.com/search.naver?where=news&query={encoded_query}&nso=so:r,p:from{start_date}to{end_date}"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    response = requests.get(url, headers=headers)
-    response.raise_for_status()
-    soup = BeautifulSoup(response.text, 'html.parser')
-    articles = soup.select("ul.list_news > li")
+    encoded_query = urllib.parse.quote(company_name)
+
+    url_template = f"https://search.naver.com/search.naver?where=news&query={encoded_query}&nso=so:r,p:from{start_date}to{end_date}&start={{}}"
+
+    headers = {
+        "User-Agent": random.choice([
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/93.0.4577.82 Safari/537.36"
+        ])
+    }
 
     data = []
-    for article in articles[:10]:
-        title = article.select_one("a.news_tit").text
-        link = article.select_one("a.news_tit")['href']
-        content = article.select_one("div.news_dsc").text if article.select_one("div.news_dsc") else ""
-        data.append({"title": title, "link": link, "content": content})
+    for page in range(1, 6):
+        url = url_template.format((page - 1) * 10 + 1)
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, 'html.parser')
+        articles = soup.select("ul.list_news > li")
 
-    return data
+        for article in articles:
+            title = article.select_one("a.news_tit").text
+            link = article.select_one("a.news_tit")['href']
+            source = article.select_one("a.info").text if article.select_one("a.info") else ""
+            date = article.select_one("span.date").text if article.select_one("span.date") else ""
+            content = article.select_one("div.news_dsc").text if article.select_one("div.news_dsc") else ""
+            summary = content[:150] + "..." if content else ""
+            
+            # 키워드 추출
+            keywords = extract_keywords(content)
+            
+            data.append({"title": title, "link": link, "content": content, "source": source, "date": date, "summary": summary, "keywords": keywords})
+
+    return deduplicate_news(data, threshold)
+
+
+def extract_keywords(content, top_n=3):
+    if not content:
+        return []
+    
+    # TF-IDF로 키워드 추출
+    vectorizer = TfidfVectorizer(stop_words='english', max_features=top_n)
+    tfidf_matrix = vectorizer.fit_transform([content])
+    keywords = vectorizer.get_feature_names_out()
+    
+    return keywords
+
+
+def deduplicate_news(news_data, threshold=0.3):
+    if len(news_data) <= 1:
+        return news_data
+
+    # 제목과 본문을 합친 텍스트 생성
+    combined_texts = [news['title'] + " " + news['content'] for news in news_data]
+    vectorizer = TfidfVectorizer().fit_transform(combined_texts)
+    cosine_sim = cosine_similarity(vectorizer, vectorizer)
+
+    filtered_news = []
+    seen_indices = set()
+
+    for i, news in enumerate(news_data):
+        if i in seen_indices:
+            continue
+
+        filtered_news.append(news)
+        for j in range(i + 1, len(news_data)):
+            if news_data[j]['title'] == news['title'] or cosine_sim[i, j] > threshold:
+                seen_indices.add(j)
+
+    return filtered_news
 
 def tiktoken_len(text):
     tokenizer = tiktoken.get_encoding("cl100k_base")
@@ -282,6 +379,7 @@ def plot_stock_plotly(df, company, period):
     )
 
     st.plotly_chart(fig)
+    
 
 if __name__ == '__main__':
     main()
