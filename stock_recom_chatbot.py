@@ -20,8 +20,6 @@ from difflib import SequenceMatcher
 import urllib.parse
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-import re
-from konlpy.tag import Okt
 
 
 def main():
@@ -201,26 +199,13 @@ def crawl_news(company_name, days, threshold=0.3):
     return deduplicate_news(data, threshold)
 
 
-
 def extract_keywords(content, top_n=3):
     if not content:
         return []
-
-    # Okt 객체를 사용해 형태소 분석
-    okt = Okt()
-    # 명사만 추출
-    nouns = okt.nouns(content)
     
-    # 조사 제외 (예: 은, 는, 이, 가, 을, 를 등)
-    stop_words = set(["은", "는", "이", "가", "을", "를", "의", "과", "와", "도", "로", "부터", "까지", "에", "에서"])
-    filtered_nouns = [noun for noun in nouns if noun not in stop_words]
-
-    if not filtered_nouns:
-        return []
-
     # TF-IDF로 키워드 추출
     vectorizer = TfidfVectorizer(stop_words='english', max_features=top_n)
-    tfidf_matrix = vectorizer.fit_transform([' '.join(filtered_nouns)])
+    tfidf_matrix = vectorizer.fit_transform([content])
     keywords = vectorizer.get_feature_names_out()
     
     return keywords
