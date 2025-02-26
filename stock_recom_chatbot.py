@@ -210,6 +210,9 @@ def extract_keywords(content, top_n=3):
     
     return keywords
 
+def remove_particles(keyword):
+    return re.sub(r'[가-힣]+(의|가|이|을|를|은|는|도|로|으로|과|와|다|에서|에게|랑|이나|나)', '', keyword)
+
 
 def deduplicate_news(news_data, threshold=0.3):
     if len(news_data) <= 1:
