@@ -140,9 +140,6 @@ def main():
                         st.markdown(f"- [{doc.metadata['source']}]({doc.metadata['source']})")
 
 
-okt = Okt()  # ✅ 한국어 형태소 분석기
-
-
 def crawl_news(company, days):
     today = datetime.today()
     start_date = (today - timedelta(days=days)).strftime('%Y%m%d')
@@ -160,8 +157,10 @@ def crawl_news(company, days):
     }
 
     data = []
+    seen_urls = set()  # ✅ URL 중복 검사
+    seen_titles = set()  # ✅ 제목 중복 검사
 
-    for page in range(1, 6):  # ✅ 1~5 페이지까지 크롤링
+    for page in range(1, 6):  # ✅ 1~5 페이지 크롤링
         url = url_template.format((page - 1) * 10 + 1)
         response = requests.get(url, headers=headers)
         response.raise_for_status()
@@ -173,44 +172,33 @@ def crawl_news(company, days):
             link = article.select_one("a.news_tit")['href']
             content = article.select_one("div.news_dsc").text.strip() if article.select_one("div.news_dsc") else ""
 
+            # ✅ 1. 같은 URL이면 중복 뉴스로 간주
+            if link in seen_urls:
+                continue
+            seen_urls.add(link)
+
+            # ✅ 2. 제목이 80% 이상 유사하면 중복 뉴스로 간주
+            is_duplicate = False
+            for existing_title in seen_titles:
+                similarity = SequenceMatcher(None, title, existing_title).ratio()
+                if similarity > 0.5:
+                    is_duplicate = True
+                    break
+            if is_duplicate:
+                continue
+            seen_titles.add(title)
+
+            # ✅ 3. 본문이 너무 짧거나 없는 경우 제외
+            if len(content) < 20:  # (20자 이하는 광고성, 불완전 기사일 가능성 높음)
+                continue
+
             data.append({"title": title, "link": link, "content": content})
 
     return data
 
 
-def extract_keywords(text):
-    """뉴스에서 명사만 추출"""
-    return ' '.join(okt.nouns(text))  # ✅ 명사만 공백으로 구분해 반환
 
 
-def deduplicate_news(news_data, similarity_threshold=0.1):
-    """TF-IDF로 핵심 키워드 추출 후, 코사인 유사도로 중복 뉴스 제거"""
-    if len(news_data) <= 1:
-        return news_data
-
-    # ✅ 1. 명사만 추출하여 새로운 텍스트 생성
-    keyword_texts = [extract_keywords(news["title"] + " " + news["content"]) for news in news_data]
-
-    # ✅ 2. TF-IDF 벡터화 (핵심 키워드 추출)
-    vectorizer = TfidfVectorizer()
-    tfidf_matrix = vectorizer.fit_transform(keyword_texts)
-
-    # ✅ 3. 코사인 유사도 계산
-    cosine_sim = cosine_similarity(tfidf_matrix, tfidf_matrix)
-
-    unique_news = []
-    seen_indices = set()
-
-    for i, news in enumerate(news_data):
-        if i in seen_indices:
-            continue
-        unique_news.append(news)
-
-        for j in range(i + 1, len(news_data)):
-            if cosine_sim[i, j] > similarity_threshold:  # ✅ 유사도가 기준 이상이면 중복 처리
-                seen_indices.add(j)
-
-    return unique_news
 
 
 def tiktoken_len(text):
