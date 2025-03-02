@@ -183,7 +183,7 @@ def extract_keywords(text):
     return ' '.join(okt.nouns(text))  # ✅ 명사만 공백으로 구분해 반환
 
 
-def deduplicate_news(news_data, similarity_threshold=0.5):
+def deduplicate_news(news_data, similarity_threshold=0.1):
     """TF-IDF로 핵심 키워드 추출 후, 코사인 유사도로 중복 뉴스 제거"""
     if len(news_data) <= 1:
         return news_data
