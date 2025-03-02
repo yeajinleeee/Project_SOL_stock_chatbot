@@ -174,28 +174,49 @@ def crawl_news(company, days, threshold=0.3):
     return deduplicate_news(data, threshold)
 
 
-def deduplicate_news(news_data, threshold=0.3):
+def deduplicate_news(news_data, threshold=0.2):
     if len(news_data) <= 1:
         return news_data
 
-    # 제목과 본문을 합친 텍스트 생성
-    combined_texts = [news['title'] + " " + news['content'] for news in news_data]
+    filtered_news = []
+    seen_titles = set()
+    seen_indices = set()
+
+    # ✅ 1. 완전 동일한 제목 제거
+    for i, news in enumerate(news_data):
+        if news["title"] in seen_titles:
+            continue
+        seen_titles.add(news["title"])
+        filtered_news.append(news)
+
+    # ✅ 2. 제목 유사도 80% 이상이면 중복 제거 (SequenceMatcher 사용)
+    final_news = []
+    for i, news in enumerate(filtered_news):
+        is_duplicate = False
+        for j, existing_news in enumerate(final_news):
+            similarity = SequenceMatcher(None, news["title"], existing_news["title"]).ratio()
+            if similarity > 0.8:
+                is_duplicate = True
+                break
+        if not is_duplicate:
+            final_news.append(news)
+
+    # ✅ 3. 본문을 TF-IDF 벡터화 후 코사인 유사도로 중복 확인
+    combined_texts = [news['title'] + " " + news['content'] for news in final_news]
     vectorizer = TfidfVectorizer().fit_transform(combined_texts)
     cosine_sim = cosine_similarity(vectorizer, vectorizer)
 
-    filtered_news = []
+    unique_news = []
     seen_indices = set()
-
-    for i, news in enumerate(news_data):
+    for i, news in enumerate(final_news):
         if i in seen_indices:
             continue
-
-        filtered_news.append(news)
-        for j in range(i + 1, len(news_data)):
-            if news_data[j]['title'] == news['title'] or cosine_sim[i, j] > threshold:
+        unique_news.append(news)
+        for j in range(i + 1, len(final_news)):
+            if cosine_sim[i, j] > threshold:
                 seen_indices.add(j)
 
-    return filtered_news
+    return unique_news
 
 
 def tiktoken_len(text):
