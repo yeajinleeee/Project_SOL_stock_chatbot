@@ -106,7 +106,7 @@ def main():
                     f"📉 {st.session_state.company_name} - 해당 기간({st.session_state.selected_period})의 거래 데이터가 없습니다.")
             else:
                 plot_stock_plotly(df, st.session_state.company_name, st.session_state.selected_period)
-                
+
         if st.session_state.processComplete and st.session_state.company_name:
             st.subheader(f"📰 {st.session_state.company_name} 최근 뉴스 목록")
 
@@ -120,16 +120,11 @@ def main():
                     st.write(news["content"])
                     st.markdown(f"[원문 보기]({news['link']})")
 
-            # 버튼이 눌린 적이 없으면 True 상태로 유지
-            if "show_more" not in st.session_state:
-                st.session_state.show_more = True
-
-            # 버튼이 표시될 조건: 뉴스가 남아 있고, 버튼이 눌린 적이 없을 때
-            if st.session_state.show_more and st.session_state.news_limit < len(st.session_state.news_data):
+            # 추가 뉴스가 남아 있는 경우 버튼을 보여줌
+            if st.session_state.news_limit < len(st.session_state.news_data):
                 if st.button("더 많은 뉴스 보기"):
-                    st.session_state.news_limit = len(st.session_state.news_data)  # 모든 뉴스 표시
-                    st.session_state.show_more = False  # 버튼을 숨김
-                    st.experimental_rerun()  # 즉시 UI 업데이트하여 버튼 제거
+                    # 모든 뉴스 출력하도록 제한을 변경
+                    st.session_state.news_limit = len(st.session_state.news_data)
 
     # 채팅 부분: 사용자가 질문을 입력하면 대화가 이어짐
     if query := st.chat_input("질문을 입력해주세요."):
