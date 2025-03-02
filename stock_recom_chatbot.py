@@ -139,7 +139,6 @@ def main():
                     for doc in result['source_documents']:
                         st.markdown(f"- [{doc.metadata['source']}]({doc.metadata['source']})")
 
-
 def crawl_news(company, days):
     today = datetime.today()
     start_date = (today - timedelta(days=days)).strftime('%Y%m%d')
@@ -157,10 +156,11 @@ def crawl_news(company, days):
     }
 
     data = []
-    seen_urls = set()  # ✅ URL 중복 검사
-    seen_titles = set()  # ✅ 제목 중복 검사
+    seen_urls = set()
+    seen_titles = []
+    seen_contents = []
 
-    for page in range(1, 6):  # ✅ 1~5 페이지 크롤링
+    for page in range(1, 6):  # 1~5 페이지 크롤링
         url = url_template.format((page - 1) * 10 + 1)
         response = requests.get(url, headers=headers)
         response.raise_for_status()
@@ -172,24 +172,39 @@ def crawl_news(company, days):
             link = article.select_one("a.news_tit")['href']
             content = article.select_one("div.news_dsc").text.strip() if article.select_one("div.news_dsc") else ""
 
-            # ✅ 1. 같은 URL이면 중복 뉴스로 간주
+            # ✅ 1. URL 중복 검사
             if link in seen_urls:
                 continue
             seen_urls.add(link)
 
-            # ✅ 2. 제목이 80% 이상 유사하면 중복 뉴스로 간주
-            is_duplicate = False
+            # ✅ 2. 제목 중복 검사 (TF-IDF 기반 유사도 체크)
+            is_duplicate_title = False
             for existing_title in seen_titles:
-                similarity = SequenceMatcher(None, title, existing_title).ratio()
-                if similarity > 0.5:
-                    is_duplicate = True
+                vectorizer = TfidfVectorizer().fit_transform([title, existing_title])
+                similarity = cosine_similarity(vectorizer)[0, 1]
+                if similarity > 0.6:  # 60% 이상 유사하면 중복으로 판단
+                    is_duplicate_title = True
                     break
-            if is_duplicate:
+            if is_duplicate_title:
                 continue
-            seen_titles.add(title)
+            seen_titles.append(title)
 
-            # ✅ 3. 본문이 너무 짧거나 없는 경우 제외
-            if len(content) < 20:  # (20자 이하는 광고성, 불완전 기사일 가능성 높음)
+            # ✅ 3. 본문 유사도 검사 (Jaccard Similarity)
+            def jaccard_similarity(str1, str2):
+                set1, set2 = set(str1.split()), set(str2.split())
+                return len(set1 & set2) / len(set1 | set2)
+
+            is_duplicate_content = False
+            for existing_content in seen_contents:
+                if jaccard_similarity(content, existing_content) > 0.5:  # 50% 이상 유사하면 중복 처리
+                    is_duplicate_content = True
+                    break
+            if is_duplicate_content:
+                continue
+            seen_contents.append(content)
+
+            # ✅ 4. 본문이 너무 짧거나 없는 경우 제외
+            if len(content) < 20:  # 20자 이하는 광고성, 불완전 기사일 가능성 높음
                 continue
 
             data.append({"title": title, "link": link, "content": content})
