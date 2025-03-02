@@ -107,8 +107,24 @@ def main():
             else:
                 plot_stock_plotly(df, st.session_state.company_name, st.session_state.selected_period)
 
-        st.markdown("최근 기업 뉴스 목록을 보려면 누르시오")
+        if st.session_state.processComplete and st.session_state.company_name:
+            st.subheader(f"📰 {st.session_state.company_name} 최근 뉴스 목록")
 
+            # 세션 상태에 뉴스 표시 개수를 저장 (기본값: 3개)
+            if "news_limit" not in st.session_state:
+                st.session_state.news_limit = 3  # 기본 3개만 표시
+
+            # 현재 표시할 뉴스 개수만큼 출력
+            for i, news in enumerate(st.session_state.news_data[:st.session_state.news_limit]):
+                with st.expander(news["title"]):
+                    st.write(news["content"])
+                    st.markdown(f"[원문 보기]({news['link']})")
+
+            # "더 많은 뉴스 보기" 버튼
+            if st.session_state.news_limit < len(st.session_state.news_data):
+                if st.button("더 많은 뉴스 보기"):
+                    st.session_state.news_limit = len(st.session_state.news_data)  # 모든 뉴스 표시
+                    st.rerun()  # 버튼 누르면 즉시 UI 업데이트
 
     # 채팅 부분: 사용자가 질문을 입력하면 대화가 이어짐
     if query := st.chat_input("질문을 입력해주세요."):
