@@ -20,7 +20,7 @@ from difflib import SequenceMatcher
 import urllib.parse
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-
+from konlpy.tag import Okt
 
 def main():
     st.set_page_config(page_title="Stock Analysis Chatbot", page_icon=":chart_with_upwards_trend:")
@@ -140,8 +140,10 @@ def main():
                         st.markdown(f"- [{doc.metadata['source']}]({doc.metadata['source']})")
 
 
+okt = Okt()  # ✅ 한국어 형태소 분석기
 
-def crawl_news(company, days, title_threshold=0.8, content_threshold=0.2):
+
+def crawl_news(company, days):
     today = datetime.today()
     start_date = (today - timedelta(days=days)).strftime('%Y%m%d')
     end_date = today.strftime('%Y%m%d')
@@ -158,10 +160,8 @@ def crawl_news(company, days, title_threshold=0.8, content_threshold=0.2):
     }
 
     data = []
-    seen_titles = set()
-    seen_contents = []
 
-    for page in range(1, 6):
+    for page in range(1, 6):  # ✅ 1~5 페이지까지 크롤링
         url = url_template.format((page - 1) * 10 + 1)
         response = requests.get(url, headers=headers)
         response.raise_for_status()
@@ -173,38 +173,44 @@ def crawl_news(company, days, title_threshold=0.8, content_threshold=0.2):
             link = article.select_one("a.news_tit")['href']
             content = article.select_one("div.news_dsc").text.strip() if article.select_one("div.news_dsc") else ""
 
-            # ✅ 1. 같은 제목이 이미 있으면 건너뛰기
-            if title in seen_titles:
-                continue
-
-            # ✅ 2. 제목이 80% 이상 유사하면 중복으로 간주하고 건너뛰기
-            is_duplicate = False
-            for existing_title in seen_titles:
-                similarity = SequenceMatcher(None, title, existing_title).ratio()
-                if similarity > title_threshold:
-                    is_duplicate = True
-                    break
-            if is_duplicate:
-                continue
-
-            # ✅ 3. 본문이 80% 이상 유사하면 중복으로 간주하고 건너뛰기
-            is_duplicate = False
-            for existing_content in seen_contents:
-                texts = [existing_content, content]
-                vectorizer = TfidfVectorizer().fit_transform(texts)
-                cosine_sim = cosine_similarity(vectorizer, vectorizer)[0, 1]
-                if cosine_sim > content_threshold:
-                    is_duplicate = True
-                    break
-            if is_duplicate:
-                continue
-
-            # ✅ 4. 중복이 아닌 경우만 저장
-            seen_titles.add(title)
-            seen_contents.append(content)
             data.append({"title": title, "link": link, "content": content})
 
     return data
+
+
+def extract_keywords(text):
+    """뉴스에서 명사만 추출"""
+    return ' '.join(okt.nouns(text))  # ✅ 명사만 공백으로 구분해 반환
+
+
+def deduplicate_news(news_data, similarity_threshold=0.5):
+    """TF-IDF로 핵심 키워드 추출 후, 코사인 유사도로 중복 뉴스 제거"""
+    if len(news_data) <= 1:
+        return news_data
+
+    # ✅ 1. 명사만 추출하여 새로운 텍스트 생성
+    keyword_texts = [extract_keywords(news["title"] + " " + news["content"]) for news in news_data]
+
+    # ✅ 2. TF-IDF 벡터화 (핵심 키워드 추출)
+    vectorizer = TfidfVectorizer()
+    tfidf_matrix = vectorizer.fit_transform(keyword_texts)
+
+    # ✅ 3. 코사인 유사도 계산
+    cosine_sim = cosine_similarity(tfidf_matrix, tfidf_matrix)
+
+    unique_news = []
+    seen_indices = set()
+
+    for i, news in enumerate(news_data):
+        if i in seen_indices:
+            continue
+        unique_news.append(news)
+
+        for j in range(i + 1, len(news_data)):
+            if cosine_sim[i, j] > similarity_threshold:  # ✅ 유사도가 기준 이상이면 중복 처리
+                seen_indices.add(j)
+
+    return unique_news
 
 
 def tiktoken_len(text):
