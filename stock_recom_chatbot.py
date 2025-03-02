@@ -123,7 +123,7 @@ def main():
 
             # 버튼 클릭 시 상태 변경
             if not st.session_state.show_more_clicked:
-                if st.button('더 많은 뉴스보기'):
+                if st.button("더 많은 뉴스보기"):
                     st.session_state.show_more_clicked = True
                     st.rerun()  # 버튼 클릭 시 페이지 리로드하여 버튼 제거
 
@@ -218,9 +218,6 @@ def crawl_news(company, days):
             data.append({"title": title, "link": link, "content": content})
 
     return data
-
-
-
 
 
 
