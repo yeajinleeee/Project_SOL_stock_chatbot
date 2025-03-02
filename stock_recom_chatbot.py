@@ -174,7 +174,7 @@ def crawl_news(company, days, threshold=0.3):
     return deduplicate_news(data, threshold)
 
 
-def deduplicate_news(news_data, threshold=0.2):
+def deduplicate_news(news_data, title_threshold=0.7, content_threshold=0.15):
     if len(news_data) <= 1:
         return news_data
 
@@ -182,26 +182,27 @@ def deduplicate_news(news_data, threshold=0.2):
     seen_titles = set()
     seen_indices = set()
 
-    # ✅ 1. 완전 동일한 제목 제거
+    # ✅ 1. 완전히 같은 제목 및 본문 중복 제거
     for i, news in enumerate(news_data):
-        if news["title"] in seen_titles:
+        title_content_pair = (news["title"].strip(), news["content"].strip())
+        if title_content_pair in seen_titles:
             continue
-        seen_titles.add(news["title"])
+        seen_titles.add(title_content_pair)
         filtered_news.append(news)
 
-    # ✅ 2. 제목 유사도 80% 이상이면 중복 제거 (SequenceMatcher 사용)
+    # ✅ 2. 제목 유사도가 70% 이상인 뉴스 제거 (SequenceMatcher 사용)
     final_news = []
     for i, news in enumerate(filtered_news):
         is_duplicate = False
-        for j, existing_news in enumerate(final_news):
+        for existing_news in final_news:
             similarity = SequenceMatcher(None, news["title"], existing_news["title"]).ratio()
-            if similarity > 0.8:
+            if similarity > title_threshold:
                 is_duplicate = True
                 break
         if not is_duplicate:
             final_news.append(news)
 
-    # ✅ 3. 본문을 TF-IDF 벡터화 후 코사인 유사도로 중복 확인
+    # ✅ 3. 본문 유사도 검사 (TF-IDF + 코사인 유사도)
     combined_texts = [news['title'] + " " + news['content'] for news in final_news]
     vectorizer = TfidfVectorizer().fit_transform(combined_texts)
     cosine_sim = cosine_similarity(vectorizer, vectorizer)
@@ -213,10 +214,11 @@ def deduplicate_news(news_data, threshold=0.2):
             continue
         unique_news.append(news)
         for j in range(i + 1, len(final_news)):
-            if cosine_sim[i, j] > threshold:
+            if cosine_sim[i, j] > content_threshold:
                 seen_indices.add(j)
 
     return unique_news
+
 
 
 def tiktoken_len(text):
