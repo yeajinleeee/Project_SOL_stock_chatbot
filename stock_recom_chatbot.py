@@ -110,9 +110,9 @@ def main():
         if st.session_state.processComplete and st.session_state.company_name:
             st.subheader(f"📰 {st.session_state.company_name} 최근 뉴스 목록")
 
-            # 세션 상태에 뉴스 표시 개수를 저장 (기본값: 3개)
+            # 세션 상태에 뉴스 표시 개수를 저장
             if "news_limit" not in st.session_state:
-                st.session_state.news_limit = 3  # 기본 3개만 표시
+                st.session_state.news_limit = 10  # 기본 3개만 표시
 
             # 현재 표시할 뉴스 개수만큼 출력
             for i, news in enumerate(st.session_state.news_data[:st.session_state.news_limit]):
@@ -121,9 +121,13 @@ def main():
                     st.markdown(f"[원문 보기]({news['link']})")
 
             # "더 많은 뉴스 보기" 버튼
-            if st.session_state.news_limit < len(st.session_state.news_data):
+            if "show_more" not in st.session_state:
+                st.session_state.show_more = True  # 버튼 초기 표시 상태
+
+            if st.session_state.show_more and st.session_state.news_limit < len(st.session_state.news_data):
                 if st.button("더 많은 뉴스 보기"):
                     st.session_state.news_limit = len(st.session_state.news_data)  # 모든 뉴스 표시
+                    st.session_state.show_more = False  # 버튼을 숨김
                     st.rerun()  # 버튼 누르면 즉시 UI 업데이트
 
     # 채팅 부분: 사용자가 질문을 입력하면 대화가 이어짐
