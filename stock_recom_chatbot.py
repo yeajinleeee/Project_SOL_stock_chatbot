@@ -117,12 +117,19 @@ def main():
             for i, news in enumerate(news_data[:10]):
                 st.markdown(f"- **{news['title']}** ([링크]({news['link']}))")
 
-            # '더보기' 버튼 클릭 시 나머지 뉴스 표시
-            if len(news_data) > 10:
-                if st.button('더보기', key="show_more"):
+            # 버튼 클릭 여부 확인
+            if "show_more_clicked" not in st.session_state:
+                st.session_state.show_more_clicked = False
+
+            # '더 많은 뉴스보기' 버튼 클릭 시 나머지 뉴스 표시 & 버튼 제거
+            if not st.session_state.show_more_clicked:
+                if st.button('더 많은 뉴스보기'):
+                    st.session_state.show_more_clicked = True
                     for news in news_data[10:]:
                         st.markdown(f"- **{news['title']}** ([링크]({news['link']}))")
-
+            else:
+                for news in news_data[10:]:
+                    st.markdown(f"- **{news['title']}** ([링크]({news['link']}))")
 
     # 채팅 부분: 사용자가 질문을 입력하면 대화가 이어짐
     if query := st.chat_input("질문을 입력해주세요."):
