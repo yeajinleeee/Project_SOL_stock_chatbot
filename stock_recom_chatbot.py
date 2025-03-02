@@ -125,10 +125,10 @@ def main():
             if not st.session_state.show_more_clicked:
                 if st.button("더 많은 뉴스보기"):
                     st.session_state.show_more_clicked = True
-                    st.rerun()  # 버튼 클릭 시 페이지 리로드하여 버튼 제거
+                    st.rerun()  # 버튼 클릭 시 페이지 새로고침하여 버튼 제거
 
             # 버튼이 눌리면 추가 뉴스 표시 (rerun 이후 실행됨)
-            if st.session_state.show_more_clicked:
+            if st.session_state.get("show_more_clicked", False):  # ✅ 세션 상태 확인 방식 개선
                 for news in news_data[10:]:
                     st.markdown(f"- **{news['title']}** ([링크]({news['link']}))")
 
