@@ -174,7 +174,7 @@ def crawl_news(company, days, threshold=0.3):
     return deduplicate_news(data, threshold)
 
 
-def deduplicate_news(news_data, title_threshold=0.8, content_threshold=0.1):
+def deduplicate_news(news_data, title_threshold=0.5, content_threshold=0.05):
     if len(news_data) <= 1:
         return news_data
 
