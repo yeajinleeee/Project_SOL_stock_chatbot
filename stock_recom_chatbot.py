@@ -38,6 +38,8 @@ def main():
         st.session_state.company_name = None
     if "selected_period" not in st.session_state:
         st.session_state.selected_period = "1day"
+    if "show_more_clicked" not in st.session_state:
+        st.session_state.show_more_clicked = False
 
 
     with st.sidebar:
@@ -118,8 +120,6 @@ def main():
                 st.markdown(f"- **{news['title']}** ([링크]({news['link']}))")
 
             # '더 많은 뉴스보기' 버튼 상태 확인 (기본값 False)
-            if "show_more_clicked" not in st.session_state:
-                st.session_state.show_more_clicked = False
 
             # 버튼 클릭 시 상태 변경
             if not st.session_state.show_more_clicked:
