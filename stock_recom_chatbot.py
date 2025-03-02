@@ -20,8 +20,8 @@ from difflib import SequenceMatcher
 import urllib.parse
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-from sentence_transformers import SentenceTransformer
-import numpy as np
+from konlpy.tag import Okt
+
 
 def main():
     st.set_page_config(page_title="Stock Analysis Chatbot", page_icon=":chart_with_upwards_trend:")
@@ -175,30 +175,30 @@ def crawl_news(company, days, threshold=0.3):
     return deduplicate_news(data, threshold)
 
 
-# ✅ 1. KoBERT 임베딩 모델 로드
-model = SentenceTransformer('snunlp/KR-SBERT-V40K-klueNLI-STS')
 
-def embed_texts(texts):
-    return np.array(model.encode(texts))
+okt = Okt()
 
-def deduplicate_news_bert(news_data, similarity_threshold=0.85):
-    if len(news_data) <= 1:
-        return news_data
+def extract_keywords(text):
+    return set(okt.nouns(text))  # ✅ 뉴스에서 명사만 추출
 
-    texts = [news['title'] + " " + news['content'] for news in news_data]
-    embeddings = embed_texts(texts)
-
+def deduplicate_news_keywords(news_data, keyword_match_threshold=0.8):
     unique_news = []
-    seen_indices = set()
+    seen_keywords = []
 
-    for i, news in enumerate(news_data):
-        if i in seen_indices:
-            continue
-        unique_news.append(news)
-        for j in range(i + 1, len(news_data)):
-            sim = np.dot(embeddings[i], embeddings[j]) / (np.linalg.norm(embeddings[i]) * np.linalg.norm(embeddings[j]))
-            if sim > similarity_threshold:
-                seen_indices.add(j)  # ✅ 의미적으로 같은 뉴스 제거
+    for news in news_data:
+        keywords = extract_keywords(news["title"] + " " + news["content"])
+        is_duplicate = False
+
+        for existing_keywords in seen_keywords:
+            intersection = keywords & existing_keywords
+            match_ratio = len(intersection) / max(len(keywords), len(existing_keywords))
+            if match_ratio > keyword_match_threshold:
+                is_duplicate = True
+                break
+
+        if not is_duplicate:
+            seen_keywords.append(keywords)
+            unique_news.append(news)
 
     return unique_news
 
