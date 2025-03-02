@@ -20,7 +20,8 @@ from difflib import SequenceMatcher
 import urllib.parse
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-
+from sentence_transformers import SentenceTransformer
+import numpy as np
 
 def main():
     st.set_page_config(page_title="Stock Analysis Chatbot", page_icon=":chart_with_upwards_trend:")
@@ -174,53 +175,33 @@ def crawl_news(company, days, threshold=0.3):
     return deduplicate_news(data, threshold)
 
 
-def deduplicate_news(news_data, title_threshold=0.5, content_threshold=0.05):
+# ✅ 1. KoBERT 임베딩 모델 로드
+model = SentenceTransformer('snunlp/KR-SBERT-V40K-klueNLI-STS')
+
+def embed_texts(texts):
+    return np.array(model.encode(texts))
+
+def deduplicate_news_bert(news_data, similarity_threshold=0.85):
     if len(news_data) <= 1:
         return news_data
 
-    filtered_news = []
-    seen_urls = set()
-    seen_titles = set()
-    seen_indices = set()
-
-    # ✅ 1. 같은 URL이면 중복된 뉴스로 간주 (네이버 뉴스 같은 경우)
-    for news in news_data:
-        if news["link"] in seen_urls:
-            continue
-        seen_urls.add(news["link"])
-        filtered_news.append(news)
-
-    # ✅ 2. 제목이 80% 이상 유사하면 중복 제거
-    final_news = []
-    for news in filtered_news:
-        is_duplicate = False
-        for existing_news in final_news:
-            similarity = SequenceMatcher(None, news["title"], existing_news["title"]).ratio()
-            if similarity > title_threshold:
-                is_duplicate = True
-                break
-        if not is_duplicate:
-            final_news.append(news)
-
-    # ✅ 3. 본문 유사도 10% 이하만 남기기 (TF-IDF + 코사인 유사도)
-    combined_texts = [news['title'] + " " + news['content'] for news in final_news]
-    vectorizer = TfidfVectorizer().fit_transform(combined_texts)
-    cosine_sim = cosine_similarity(vectorizer, vectorizer)
+    texts = [news['title'] + " " + news['content'] for news in news_data]
+    embeddings = embed_texts(texts)
 
     unique_news = []
     seen_indices = set()
-    for i, news in enumerate(final_news):
+
+    for i, news in enumerate(news_data):
         if i in seen_indices:
             continue
         unique_news.append(news)
-        for j in range(i + 1, len(final_news)):
-            if cosine_sim[i, j] > content_threshold:
-                seen_indices.add(j)
-
-    # ✅ 4. 최신 뉴스만 남기기 (중복된 뉴스 중 최신 기사 유지)
-    unique_news.sort(key=lambda x: x.get("date", ""), reverse=True)
+        for j in range(i + 1, len(news_data)):
+            sim = np.dot(embeddings[i], embeddings[j]) / (np.linalg.norm(embeddings[i]) * np.linalg.norm(embeddings[j]))
+            if sim > similarity_threshold:
+                seen_indices.add(j)  # ✅ 의미적으로 같은 뉴스 제거
 
     return unique_news
+
 
 
 
